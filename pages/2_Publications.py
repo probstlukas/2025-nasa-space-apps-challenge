@@ -3,7 +3,6 @@ from semanticscholar import SemanticScholar
 from pandas import read_csv
 
 from utils.config import PUBLICATIONS_PATH
-from utils.navigation import render_sidebar
 
 
 st.set_page_config(
@@ -11,7 +10,7 @@ st.set_page_config(
     page_icon="📊",
 )
 
-# render_sidebar("pages/2_Publications.py")
+
 # Title
 st.markdown("# CSV Publications Test")
 
