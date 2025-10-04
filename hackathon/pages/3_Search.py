@@ -4,7 +4,7 @@ from random import seed, randrange, random
 seed(1)
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Search", page_icon="🔍")
+st.set_page_config(page_title="Search", page_icon="🔍", layout="wide")
 
 
 
@@ -46,21 +46,21 @@ def create_relevance_graph(c, lim):
             new_relevance[c] += relevance[u] * (1 - damping)
         relevance = new_relevance
 
+    norm = relevance[c]
     for i in range(G.order()):
-        relevance[i] /= 1.0 - damping
-        relevance[i] = min(relevance[i], 1.0)
+        relevance[i] = min(relevance[i] / norm, 1.0)
 
     relevant = [i for i in range(N) if relevance[i] >= sorted(relevance)[G.order() - min(G.order(), lim)]]
     R = nx.induced_subgraph(G, relevant)
 
     fig, ax = plt.subplots()
-    fig.set_size_inches(5, 10)
+    fig.set_size_inches(5, 5)
     ax.axis("off")
 
-    pos = nx.spring_layout(R, k=0.35, seed=0)
+    pos = nx.spring_layout(G, seed=0)
     nx.draw_networkx_nodes(
         R, pos,
-        node_color=["white" for _ in R.nodes],
+        node_color=["#888888" for _ in R.nodes],
         node_size=[2000 - 10 for _ in R.nodes],
         ax=ax
     )
@@ -75,14 +75,20 @@ def create_relevance_graph(c, lim):
         labels={ v: f"[{v}]" for v in R.nodes },
         ax=ax
     )
-    nx.draw_networkx_edges(R, pos, edge_color="white", ax=ax)
+    nx.draw_networkx_edges(R, pos, edge_color="#888888", ax=ax)
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    nx.draw_networkx_edges(G, pos, edge_color="#888888", alpha=0.4, ax=ax)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
 
+    relevant.sort(key=lambda v: -relevance[v])
     return relevant, fig
 
 
 
 search_query = st.text_input("Search here")
-description_column, connection_column = st.columns([0.50, 0.50])
+description_column, connection_column = st.columns([0.5, 0.5])
 if search_query:
     if not search_query.isdigit():
         description_column.write(f"The search query \"{search_query}\" is not a number")
@@ -91,7 +97,7 @@ if search_query:
         if c >= N:
             description_column.write(f"The search query {c} is too large")
         else:
-            relevant, fig = create_relevance_graph(c, 8)
+            relevant, fig = create_relevance_graph(c, 7)
             for entry in relevant:
                 description_column.write(f"Found relevant entry {entry}")
                 description_column.divider()
