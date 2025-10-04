@@ -45,7 +45,8 @@ for _ in range(100):
     importance = new_importance
 
 for i in range(G.order()):
-    importance[i] /= 1 - damping
+    importance[i] /= 1.0 - damping
+    importance[i] = min(importance[i], 1.0)
 
 number_of_results = G.order()
 relevant = [i for i in range(N) if importance[i] >= sorted(importance)[G.order() - number_of_results]]
