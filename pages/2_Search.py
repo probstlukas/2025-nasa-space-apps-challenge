@@ -1,8 +1,12 @@
+import streamlit as st
 import networkx as nx
 from random import seed, randrange, random
 seed(1)
 import matplotlib.pyplot as plt
 plt.figure(figsize=(10, 10), dpi=80)
+
+st.set_page_config(page_title="Search", page_icon="🔍")
+
 
 
 N = 20
@@ -47,7 +51,7 @@ for _ in range(100):
 for i in range(G.order()):
     importance[i] /= 1 - damping
 
-number_of_results = G.order()
+number_of_results = 8
 relevant = [i for i in range(N) if importance[i] >= sorted(importance)[G.order() - number_of_results]]
 R = nx.induced_subgraph(G, relevant)
 
@@ -69,4 +73,4 @@ nx.draw_networkx_labels(
 )
 nx.draw_networkx_edges(R, pos)
 
-plt.show()
+st.markdown("ok")
