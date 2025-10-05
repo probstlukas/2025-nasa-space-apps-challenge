@@ -88,7 +88,7 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             st.info("No PDF link detected for this work.")
 
     with relevant_work_tab:
-        st.subheader("Citation Graph")
+        st.subheader("Relevant Work")
         graph = get_similarity_graph()
         if resource_id not in graph:
             st.info("No citation relationships found for this paper yet.")
@@ -102,7 +102,7 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
 
             if not neighbors:
                 st.info(
-                    "This paper currently has no related entries in the citation graph."
+                    "This paper currently has no related entries in the relevant work graph."
                 )
             else:
                 top_neighbors = neighbors[:10]

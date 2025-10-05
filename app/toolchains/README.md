@@ -10,7 +10,7 @@ The minimal requirement for a graph are the following:
 
 ```python
 def create_citation_graph() -> nx.Graph:
-    # Create citation graph with network x
+    # Create relevant work graph with network x
     return graph
 ```
 

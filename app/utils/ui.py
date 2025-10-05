@@ -8,7 +8,7 @@ def render_app_sidebar() -> None:
         st.sidebar.image(str(LOGO_PATH), width='stretch')
     st.sidebar.markdown("### Space Biology Knowledge Engine")
     st.sidebar.caption(
-        "Navigate the NASA bioscience corpus, explore citation graphs, and query the knowledge base."
+        "Navigate the NASA bioscience corpus, explore relevant work, and query the knowledge base."
     )
 
 
