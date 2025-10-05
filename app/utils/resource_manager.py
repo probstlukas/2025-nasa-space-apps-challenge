@@ -1,7 +1,8 @@
 import datetime
 import os
 import pickle
-from typing import Any, Dict, List, Optional, Tuple, Union
+import random
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from pandas import read_csv
@@ -370,7 +371,12 @@ def _ensure_embeddings() -> bool:
     return updated
 
 
-def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, float]]:
+def _search_fallback(
+    query: str,
+    limit: int,
+    *,
+    allowed_types: Optional[Iterable[str]] = None,
+) -> List[Tuple[int, ResourceType, float]]:
     needle = query.lower().strip()
     hits: List[Tuple[int, ResourceType, float]] = []
     seen: set[int] = set()
@@ -378,7 +384,15 @@ def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, fl
     if not needle:
         return []
 
+    allowed_normalized: Optional[set[str]] = None
+    if allowed_types is not None:
+        allowed_normalized = {typ.lower() for typ in allowed_types if typ}
+        if not allowed_normalized:
+            return []
+
     for id, resource in RESOURCES.items():
+        if allowed_normalized is not None and resource.type.lower() not in allowed_normalized:
+            continue
         haystacks = [getattr(resource, "title", "") or ""]
         abstract = getattr(resource, "abstract", None) or ""
         if abstract:
@@ -393,6 +407,8 @@ def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, fl
         for id, resource in RESOURCES.items():
             if id in seen:
                 continue
+            if allowed_normalized is not None and resource.type.lower() not in allowed_normalized:
+                continue
             hits.append((id, resource, 0.0))
             if len(hits) >= limit:
                 break
@@ -401,14 +417,23 @@ def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, fl
 
 
 def search_resources(
-    query: str, limit: int = 10
+    query: str,
+    limit: int = 10,
+    *,
+    resource_types: Optional[Iterable[str]] = None,
 ) -> List[Tuple[int, ResourceType, float]]:
     if not query or not query.strip():
         return []
 
+    allowed_normalized: Optional[set[str]] = None
+    if resource_types is not None:
+        allowed_normalized = {typ.lower() for typ in resource_types if typ}
+        if not allowed_normalized:
+            return []
+
     client = _get_openai_client()
     if client is None:
-        return _search_fallback(query, limit)
+        return _search_fallback(query, limit, allowed_types=allowed_normalized)
 
     try:
         response = client.embeddings.create(
@@ -420,16 +445,18 @@ def search_resources(
             st.warning(f"Falling back to basic search: {exc}")
         else:
             print(f"Falling back to basic search: {exc}")
-        return _search_fallback(query, limit)
+        return _search_fallback(query, limit, allowed_types=allowed_normalized)
 
     query_vector = _normalize_vector(response.data[0].embedding)
     if query_vector is None:
-        return _search_fallback(query, limit)
+        return _search_fallback(query, limit, allowed_types=allowed_normalized)
 
     query_array = np.asarray(query_vector, dtype=np.float32)
 
     scored: List[Tuple[float, int, ResourceType]] = []
     for id, resource in RESOURCES.items():
+        if allowed_normalized is not None and resource.type.lower() not in allowed_normalized:
+            continue
         embedding = getattr(resource, "embedding", None)
         if not embedding:
             continue
@@ -438,7 +465,7 @@ def search_resources(
         scored.append((score, id, resource))
 
     if not scored:
-        return _search_fallback(query, limit)
+        return _search_fallback(query, limit, allowed_types=allowed_normalized)
 
     scored.sort(reverse=True)
 
@@ -449,6 +476,33 @@ def search_resources(
             break
 
     return results
+
+
+def sample_resources(
+    count: int = 5,
+    *,
+    resource_types: Optional[Iterable[str]] = None,
+) -> List[Tuple[int, ResourceType]]:
+    allowed: Optional[set[str]] = None
+    if resource_types is not None:
+        allowed = {typ.lower() for typ in resource_types if typ}
+        if not allowed:
+            return []
+
+    pool: List[Tuple[int, ResourceType]] = []
+    for id, resource in RESOURCES.items():
+        if allowed is not None and resource.type.lower() not in allowed:
+            continue
+        pool.append((id, resource))
+
+    if not pool:
+        return []
+
+    if count >= len(pool):
+        random.shuffle(pool)
+        return pool
+
+    return random.sample(pool, count)
 
 
 def _load_resources() -> None:
