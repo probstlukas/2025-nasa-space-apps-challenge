@@ -1,7 +1,12 @@
 import streamlit as st
 
+try:
+    from paper_search.search_page import setup_search_page
+    _search_import_error = None
+except ImportError as exc:  # noqa: PERF203
+    setup_search_page = None
+    _search_import_error = exc
 
-from paper_search.search_page import setup_search_page
 from paper_search.paper_view import setup_paper_view
 from paper_search.experiment_view import setup_experiment_view
 import utils.resource_manager as R
@@ -24,7 +29,13 @@ if "selected_resource" not in st.session_state:
 
 
 # ---- Main View Logic ----
-if st.session_state.selected_resource is None:
+if _search_import_error is not None:
+    st.error(
+        "Search page failed to load. Check the server logs for details and restart once "
+        "the issue is resolved.\n"
+        f"ImportError: {_search_import_error}"
+    )
+elif st.session_state.selected_resource is None:
     setup_search_page(on_resource_clicked)
 else:
     # ---- Paper Details View ----

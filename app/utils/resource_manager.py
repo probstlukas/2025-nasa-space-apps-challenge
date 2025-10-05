@@ -1,7 +1,17 @@
 import datetime
+import os
 import pickle
 from typing import Any, Dict, List, Optional, Tuple, Union
-from pandas import DataFrame, read_csv
+
+import numpy as np
+from pandas import read_csv
+
+try:  # Streamlit is optional in non-app contexts
+    import streamlit as st
+except ModuleNotFoundError:  # pragma: no cover - used when running outside Streamlit
+    st = None
+
+from openai import OpenAI
 
 # from pyalex import config as pyalex_config, invert_abstract
 from pyalex.api import invert_abstract
@@ -13,6 +23,9 @@ from utils.openalex_utils import (
     summarise_reference,
     resolve_best_link,
 )
+EMBED_MODEL = "text-embedding-3-small"
+EMBED_BATCH_SIZE = 64
+EMBED_MAX_CHARS = 6000
 
 
 class PaperResource:
@@ -238,23 +251,218 @@ def _load_experiments():
     """
 
 
-def _load_resources() -> DataFrame:
+def _get_openai_client() -> Optional[OpenAI]:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key and st is not None:
+        api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else None
+    if not api_key:
+        return None
+    return OpenAI(api_key=api_key)
+
+
+def _normalize_vector(values: List[float]) -> Optional[List[float]]:
+    array = np.asarray(values, dtype=np.float32)
+    norm = np.linalg.norm(array)
+    if not np.isfinite(norm) or norm == 0.0:
+        return None
+    return (array / norm).astype(np.float32).tolist()
+
+
+def _prepare_text_for_embedding(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    trimmed = str(text).strip()
+    if not trimmed:
+        return None
+    if len(trimmed) > EMBED_MAX_CHARS:
+        trimmed = trimmed[:EMBED_MAX_CHARS]
+    return trimmed
+
+
+def _embedding_text(resource: ResourceType) -> Optional[str]:
+    if isinstance(resource, PaperResource):
+        title = resource.title
+        if isinstance(title, str):
+            return title
+        return None
+    if isinstance(resource, ExperimentResource):
+        description = resource.description
+        if description:
+            if isinstance(description, list):
+                description = " ".join(str(part) for part in description if part)
+            return str(description)
+        title = resource.title
+        if title:
+            return str(title)
+        return str(resource.osd_key)
+    return None
+
+
+def _ensure_embeddings() -> bool:
+    client = _get_openai_client()
+    updated = False
+
+    for resource in RESOURCES.values():
+        if not hasattr(resource, "embedding"):
+            resource.embedding = None  # type: ignore[attr-defined]
+            updated = True
+        if not hasattr(resource, "embedding_model"):
+            resource.embedding_model = None  # type: ignore[attr-defined]
+            updated = True
+
+    if client is None:
+        if st is not None:
+            st.warning(
+                "OpenAI API key missing. Skipping embedding generation; search results will be basic."
+            )
+        return updated
+
+    pending_texts: List[str] = []
+    pending_items: List[ResourceType] = []
+
+    def flush_batch() -> None:
+        nonlocal pending_texts, pending_items, updated
+        if not pending_texts:
+            return
+        try:
+            response = client.embeddings.create(model=EMBED_MODEL, input=pending_texts)
+        except Exception as exc:  # noqa: BLE001
+            if st is not None:
+                st.error(f"Failed to create embeddings: {exc}")
+            else:
+                print(f"Failed to create embeddings: {exc}")
+            pending_texts = []
+            pending_items = []
+            return
+
+        for datum, resource in zip(response.data, pending_items):
+            normalized = _normalize_vector(datum.embedding)
+            resource.embedding = normalized  # type: ignore[attr-defined]
+            resource.embedding_model = EMBED_MODEL  # type: ignore[attr-defined]
+            updated = True
+
+        pending_texts = []
+        pending_items = []
+
+    for resource in RESOURCES.values():
+        existing_model = getattr(resource, "embedding_model", None)
+        existing_embedding = getattr(resource, "embedding", None)
+        if existing_model == EMBED_MODEL and existing_embedding is not None:
+            continue
+
+        text = _prepare_text_for_embedding(_embedding_text(resource))
+        if not text:
+            resource.embedding = None  # type: ignore[attr-defined]
+            resource.embedding_model = EMBED_MODEL  # type: ignore[attr-defined]
+            updated = True
+            continue
+
+        pending_texts.append(text)
+        pending_items.append(resource)
+        if len(pending_texts) >= EMBED_BATCH_SIZE:
+            flush_batch()
+
+    flush_batch()
+
+    return updated
+
+
+def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, float]]:
+    needle = query.lower().strip()
+    hits: List[Tuple[int, ResourceType, float]] = []
+    seen: set[int] = set()
+
+    if not needle:
+        return []
+
+    for id, resource in RESOURCES.items():
+        haystacks = [getattr(resource, "title", "") or ""]
+        abstract = getattr(resource, "abstract", None) or ""
+        if abstract:
+            haystacks.append(abstract)
+        if any(needle in value.lower() for value in haystacks if value):
+            hits.append((id, resource, 0.0))
+            seen.add(id)
+            if len(hits) >= limit:
+                break
+
+    if len(hits) < limit:
+        for id, resource in RESOURCES.items():
+            if id in seen:
+                continue
+            hits.append((id, resource, 0.0))
+            if len(hits) >= limit:
+                break
+
+    return hits
+
+
+def search_resources(query: str, limit: int = 10) -> List[Tuple[int, ResourceType, float]]:
+    if not query or not query.strip():
+        return []
+
+    client = _get_openai_client()
+    if client is None:
+        return _search_fallback(query, limit)
+
+    try:
+        response = client.embeddings.create(
+            model=EMBED_MODEL,
+            input=[query.strip()[:EMBED_MAX_CHARS]],
+        )
+    except Exception as exc:  # noqa: BLE001
+        if st is not None:
+            st.warning(f"Falling back to basic search: {exc}")
+        else:
+            print(f"Falling back to basic search: {exc}")
+        return _search_fallback(query, limit)
+
+    query_vector = _normalize_vector(response.data[0].embedding)
+    if query_vector is None:
+        return _search_fallback(query, limit)
+
+    query_array = np.asarray(query_vector, dtype=np.float32)
+
+    scored: List[Tuple[float, int, ResourceType]] = []
+    for id, resource in RESOURCES.items():
+        embedding = getattr(resource, "embedding", None)
+        if not embedding:
+            continue
+        resource_array = np.asarray(embedding, dtype=np.float32)
+        score = float(np.dot(resource_array, query_array))
+        scored.append((score, id, resource))
+
+    if not scored:
+        return _search_fallback(query, limit)
+
+    scored.sort(reverse=True)
+
+    results: List[Tuple[int, ResourceType, float]] = []
+    for score, id, resource in scored:
+        results.append((id, resource, score))
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def _load_resources() -> None:
     global RESOURCES
 
+    loaded_from_disk = False
     if RESOURCE_PATH.exists():
         with open(RESOURCE_PATH, "rb") as file:
             RESOURCES = pickle.load(file)
-            print("Loaded resources from file")
+            loaded_from_disk = True
 
-    if len(RESOURCES) > 0:
-        return
+    if len(RESOURCES) == 0:
+        # Important to load publications before experiments
+        _load_publications()
+        _load_experiments()
 
-    # Important to load publications before experiments
-    _load_publications()
+    updated = _ensure_embeddings()
 
-    _load_experiments()
-
-    if not RESOURCE_PATH.exists():
+    if not RESOURCE_PATH.exists() or (loaded_from_disk and updated):
         with open(RESOURCE_PATH, "wb") as file:
             pickle.dump(RESOURCES, file)
 

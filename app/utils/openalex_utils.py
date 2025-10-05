@@ -99,8 +99,9 @@ def fetch_work_by_title(
     results = None
 
     for variant in _title_variants(title):
+        query = f'"{variant}"'
         try:
-            candidate = Works().search_filter(title=variant).get()
+            candidate = Works().search(query).get()
         except Exception as exc:  # noqa: BLE001
             exception_messages.append(str(exc))
             continue
@@ -110,17 +111,7 @@ def fetch_work_by_title(
             break
         time.sleep(FETCH_DELAY_SECONDS)
 
-    if results is None:
-        try:
-            results = Works().search(f'"{title}"').get()
-        except Exception as exc:  # noqa: BLE001
-            exception_messages.append(str(exc))
-
     if results:
-        if show_status and selected_variant and selected_variant != title:
-            st.info(
-                "Resolved the title via a sanitised query to handle special characters."
-            )
         work = _normalize_work(results[0])
         cache["works_by_title"][title] = work
         work_id = work.get("id")
@@ -131,10 +122,15 @@ def fetch_work_by_title(
 
     if show_status and exception_messages:
         unique_messages = list(dict.fromkeys(exception_messages))
-        st.error(
-            "OpenAlex request failed for this title due to: "
-            + "; ".join(unique_messages)
-        )
+        message = "; ".join(unique_messages)
+        if st is not None:
+            st.warning(
+                "OpenAlex lookup could not resolve this title automatically. "
+                "Falling back to search without metadata.\n"
+                f"Details: {message}"
+            )
+        else:
+            print(f"OpenAlex lookup failed for '{title}': {message}")
     return None
 
 
