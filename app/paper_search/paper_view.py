@@ -26,9 +26,14 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
         ]
     )
 
-    (overview_tab, read_tab, relevant_work_tab, experiments_tab, references_tab, qa_tab) = (
-        tabs
-    )
+    (
+        overview_tab,
+        read_tab,
+        relevant_work_tab,
+        experiments_tab,
+        references_tab,
+        qa_tab,
+    ) = tabs
 
     paper_url = resource.paper_url
     pdf_url = resource.pdf_url
@@ -96,7 +101,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             neighbors.sort(key=lambda item: item[1], reverse=True)
 
             if not neighbors:
-                st.info("This paper currently has no related entries in the citation graph.")
+                st.info(
+                    "This paper currently has no related entries in the citation graph."
+                )
             else:
                 top_neighbors = neighbors[:10]
 
@@ -105,32 +112,57 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
                 subgraph = graph.subgraph(subgraph_nodes).copy()
 
                 pos = nx.spring_layout(subgraph, seed=42)
-                fig, ax = plt.subplots(figsize=(6, 4))
-                node_colors = ["#ff6b6b" if node == resource_id else "#4d96ff" for node in subgraph]
+                fig, ax = plt.subplots(figsize=(12, 8))
+                node_colors = [
+                    "#ff6b6b" if node == resource_id else "#4d96ff" for node in subgraph
+                ]
                 nx.draw_networkx_nodes(
                     subgraph,
                     pos,
                     node_color=node_colors,
                     ax=ax,
-                    node_size=700,
+                    node_size=500,
                     alpha=0.9,
                 )
                 labels = {}
                 for node in subgraph:
                     resource_obj = R.RESOURCES.get(node)
-                    labels[node] = (resource_obj.title if resource_obj else graph.nodes[node].get("title", str(node)))[:24]
-                nx.draw_networkx_labels(subgraph, pos, labels=labels, font_size=8, ax=ax)
-                edge_weights = [max(0.5, subgraph[u][v].get("similarity", 0.0) * 8) for u, v in subgraph.edges()]
-                nx.draw_networkx_edges(subgraph, pos, width=edge_weights, alpha=0.6, ax=ax)
+                    labels[node] = (
+                        resource_obj.title
+                        if resource_obj
+                        else graph.nodes[node].get("title", str(node))
+                    )[:24]
+                nx.draw_networkx_labels(
+                    subgraph, pos, labels=labels, font_size=8, ax=ax
+                )
+                edge_weights = [
+                    max(0.5, subgraph[u][v].get("similarity", 0.0) * 8)
+                    for u, v in subgraph.edges()
+                ]
+                nx.draw_networkx_edges(
+                    subgraph, pos, width=edge_weights, alpha=0.6, ax=ax
+                )
                 ax.axis("off")
                 st.pyplot(fig)
 
                 st.markdown("#### Top Related Works")
                 for neighbor_id, score in top_neighbors:
                     neighbor_resource = R.RESOURCES.get(neighbor_id)
-                    title = neighbor_resource.title if neighbor_resource else graph.nodes[neighbor_id].get("title", "Untitled")
-                    type_label = neighbor_resource.type if neighbor_resource else graph.nodes[neighbor_id].get("type", "Unknown")
-                    year_label = neighbor_resource.year if neighbor_resource else graph.nodes[neighbor_id].get("year", "-")
+                    title = (
+                        neighbor_resource.title
+                        if neighbor_resource
+                        else graph.nodes[neighbor_id].get("title", "Untitled")
+                    )
+                    type_label = (
+                        neighbor_resource.type
+                        if neighbor_resource
+                        else graph.nodes[neighbor_id].get("type", "Unknown")
+                    )
+                    year_label = (
+                        neighbor_resource.year
+                        if neighbor_resource
+                        else graph.nodes[neighbor_id].get("year", "-")
+                    )
 
                     st.markdown(
                         f"**{title}**  \n"
