@@ -121,11 +121,15 @@ class ExperimentResource:
     type: str = "Experiment"
     icon: str = "🔬"
 
+    @property
+    def abstract(self):
+        return self.description
+
 
 ResourceType = Union[PaperResource, ExperimentResource]
 
 
-RESOUCES: Dict[int, ResourceType] = {}
+RESOURCES: Dict[int, ResourceType] = {}
 
 
 _next_id = 0
@@ -143,7 +147,7 @@ def _load_resources() -> DataFrame:
     data = df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 
     for _, row in data.iterrows():
-        RESOUCES[gen_id()] = PaperResource(title=row["Title"])
+        RESOURCES[gen_id()] = PaperResource(title=row["Title"])
 
 
 # Load resources statically once on server startup
