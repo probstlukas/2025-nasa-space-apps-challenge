@@ -7,4 +7,11 @@ COPY . ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+# Works locally (defaults to 8080) AND on Cloud Run (uses $PORT)
+ENTRYPOINT ["streamlit", "run", "app/app.py",\
+            "--server.port=${PORT:-8080}",\
+            "--server.address=0.0.0.0",\
+            "--server.headless=true",\
+            "--server.enableCORS=false",\
+            "--server.enableXsrfProtection=false"]
+
