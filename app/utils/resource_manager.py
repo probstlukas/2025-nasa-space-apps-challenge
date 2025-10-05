@@ -1,6 +1,6 @@
 import datetime
 import pickle
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from pandas import DataFrame, read_csv
 
 # from pyalex import config as pyalex_config, invert_abstract
@@ -158,6 +158,20 @@ class ExperimentResource:
             year = datetime.datetime.utcfromtimestamp(timestamp).year
             return str(year)
 
+    @property
+    def publications(self) -> List[PaperResource]:
+        titles = self._metadata.get("study publication title", None)
+        publications = []
+        for title in titles:
+            publication_id = PAPER_TITLE_INDEX.get(title, None)
+            if publication_id is None:
+                print(f"Could not find publication with title '{title}'")
+                continue
+
+            publication = RESOURCES[publication_id]
+            publications.append(publication)
+        return publications
+
     def get_property(self, key: str):
         return self._metadata.get(key, None)
 
@@ -174,6 +188,7 @@ ResourceType = Union[PaperResource, ExperimentResource]
 
 
 RESOURCES: Dict[int, ResourceType] = {}
+PAPER_TITLE_INDEX: Dict[str, int] = {}
 
 
 _next_id = 0
@@ -191,7 +206,11 @@ def _load_publications():
     data = df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 
     for _, row in data.iterrows():
-        RESOURCES[gen_id()] = PaperResource(title=row["Title"])
+        resource = PaperResource(title=row["Title"])
+        id = gen_id()
+        RESOURCES[id] = resource
+
+        PAPER_TITLE_INDEX[resource.title] = id
 
 
 def _load_experiments():

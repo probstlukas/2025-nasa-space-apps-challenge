@@ -35,4 +35,21 @@ def setup_experiment_view(resource_id: int, resource: R.ExperimentResource):
                 st.info("No abstract available for this work.")
 
     with tabs[1]:
-        st.subheader("Experiments")
+        st.subheader("Publications")
+        publications = resource.publications
+        print(publications)
+
+        if len(publications) > 0:
+            for pub in publications:
+                st.markdown(
+                    f"""
+                    **{pub.icon} {pub.title}**
+
+                    *Authors:* {', '.join(pub.authors)}  
+                    *Year:* {pub.year}  
+                    *Type:* {pub.type}
+                    """
+                )
+                st.divider()
+        else:
+            st.write("No publications on this dataset available")
