@@ -95,7 +95,7 @@ class PaperResource:
         return None
 
     @property
-    def url(self) -> Optional[Tuple[str, str]]:
+    def paper_url(self) -> Optional[Tuple[str, str]]:
         if self.data is None:
             return None
         link_info = resolve_best_link(self.data)
@@ -103,6 +103,15 @@ class PaperResource:
         if primary_link:
             label = link_info.get("label") or "Source"
             return label, primary_link
+        return None
+
+    @property
+    def pdf_url(self):
+        if self.data is None:
+            return None
+        best_location = self.data.get("best_oa_location") or self.data.get("primary_location") or {}
+        if best_location is not None:
+            return best_location.get("pdf_url", None)
         return None
 
     def get_property(self, key: str, default=None):

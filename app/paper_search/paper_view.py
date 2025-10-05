@@ -6,7 +6,7 @@ import utils.resource_manager as R
 
 
 def setup_paper_view(resource_id: int, resource: R.PaperResource):
-    tabs = st.tabs(["Overview", "Citation Graph", "Experiments", "Referenced Work"])
+    tabs = st.tabs(["Overview", "Citation Graph", "Experiments", "Referenced Work", "Q&A"])
 
     with tabs[0]:
         authors = resource.authors
@@ -17,10 +17,11 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
 
         st.write(" • ".join(infos))
 
-        url = resource.url
-        if url:
-            url_label, primary_link = url
-            st.markdown(f"[View on {url_label}]({primary_link})")
+        paper_url = resource.paper_url
+        pdf_url = resource.pdf_url
+        if paper_url and pdf_url:
+            url_label, primary_link = paper_url
+            st.markdown(f"[View on {url_label}]({primary_link}) &emsp; [View PDF]({pdf_url})")
 
         abstract = resource.abstract
         with st.container(border=True):
@@ -47,3 +48,7 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
         if referenced_work is not None:
             for ref in resource.referenced_work:
                 st.markdown(ref)
+
+    # Q&A Tab
+    with tabs[4]:
+        st.write("")        
