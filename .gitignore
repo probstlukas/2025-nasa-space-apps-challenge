@@ -5,3 +5,13 @@
 
 # Contains secrets.toml for secret keys
 .streamlit
+
+# Presentation
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.synctex.gz
+*.synctex(busy)
+*.toc
