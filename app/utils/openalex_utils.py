@@ -86,7 +86,9 @@ def _title_variants(original: str) -> List[str]:
     return variants
 
 
-def fetch_work_by_title(title: str, *, show_status: bool = True) -> Optional[Dict[str, Any]]:
+def fetch_work_by_title(
+    title: str, *, show_status: bool = True
+) -> Optional[Dict[str, Any]]:
     cache = get_cache()
     cached = cache["works_by_title"].get(title)
     if cached:
@@ -116,7 +118,9 @@ def fetch_work_by_title(title: str, *, show_status: bool = True) -> Optional[Dic
 
     if results:
         if show_status and selected_variant and selected_variant != title:
-            st.info("Resolved the title via a sanitised query to handle special characters.")
+            st.info(
+                "Resolved the title via a sanitised query to handle special characters."
+            )
         work = _normalize_work(results[0])
         cache["works_by_title"][title] = work
         work_id = work.get("id")
@@ -128,7 +132,8 @@ def fetch_work_by_title(title: str, *, show_status: bool = True) -> Optional[Dic
     if show_status and exception_messages:
         unique_messages = list(dict.fromkeys(exception_messages))
         st.error(
-            "OpenAlex request failed for this title due to: " + "; ".join(unique_messages)
+            "OpenAlex request failed for this title due to: "
+            + "; ".join(unique_messages)
         )
     return None
 

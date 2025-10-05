@@ -1,9 +1,9 @@
 import streamlit as st
 
 
-from frontend.search_page import setup_search_page
-from frontend.paper_view import setup_paper_view
-from frontend.experiment_view import setup_experiment_view
+from paper_search.search_page import setup_search_page
+from paper_search.paper_view import setup_paper_view
+from paper_search.experiment_view import setup_experiment_view
 from utils.resource_manager import get_resource
 
 
