@@ -19,7 +19,7 @@ class PaperResource:
     def __init__(self, title: str):
         self.title = title
         self.type = "Publication"
-        self.icon = "📄"
+        self.icon = "📘"
         self._data = None
         self._experiments = []
 
