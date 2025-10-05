@@ -20,7 +20,7 @@ def load_embedder(model_name: str) -> SentenceTransformer:
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-all_descriptions = { id: f"{resource.title}\n{resource.abstract}" for id, resource in list(RESOURCES.items())[:4] }
+all_descriptions = { id: f"{resource.title}\n{resource.abstract}" for id, resource in list(RESOURCES.items()) }
 
 
 model = load_embedder(MODEL_NAME)
