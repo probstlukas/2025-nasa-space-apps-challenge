@@ -15,3 +15,5 @@ openalex_cache.json
 *.synctex.gz
 *.synctex(busy)
 *.toc
+*.fls
+*.fdb_latexmk
