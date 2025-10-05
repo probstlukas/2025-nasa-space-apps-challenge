@@ -1,91 +1,112 @@
+"""Utility for building and caching a similarity graph between resources."""
+
+from __future__ import annotations
+
 import pickle
-from utils.embedding_store import (
-    get_embeddings_for_texts,
-    load_embedding_store,
-)
-from utils.config import SIM_GRAPH, RESOURCE_PATH
-
-
-from sentence_transformers import SentenceTransformer
+from typing import Dict, Tuple
 
 import networkx as nx
-import json
+import numpy as np
 import tqdm
 
+from utils.config import RESOURCE_PATH, SIM_GRAPH
 
-def load_embedder(model_name: str) -> SentenceTransformer:
-    if SentenceTransformer is None:
-        raise ModuleNotFoundError(
-            "sentence-transformers is required. Install it with `pip install sentence-transformers`."
+TOP_K_NEIGHBOURS = 10
+
+
+def _load_resource_embeddings() -> Tuple[Dict[int, np.ndarray], Dict[int, Dict[str, object]]]:
+    """Load embeddings and metadata from the exported snapshot."""
+    if not RESOURCE_PATH.exists():
+        raise RuntimeError(
+            "Resource snapshot missing. Run the application once to generate resources and embeddings before building the graph."
         )
-    return SentenceTransformer(model_name)
+
+    with RESOURCE_PATH.open("rb") as fh:
+        repository: Dict[str, Dict[str, object]] = pickle.load(fh)
+
+    snapshot = repository.get("embeddings", {})
+
+    embeddings: Dict[int, np.ndarray] = {}
+    metadata: Dict[int, Dict[str, object]] = {}
+
+    for resource_id_str, payload in snapshot.items():
+        embedding = payload.get("embedding")
+        if not embedding:
+            continue
+        vector = np.asarray(embedding, dtype=np.float32)
+        norm = np.linalg.norm(vector)
+        if not np.isfinite(norm) or norm == 0.0:
+            continue
+        vector /= norm
+
+        resource_id = int(resource_id_str)
+        embeddings[resource_id] = vector
+        metadata[resource_id] = {
+            "title": payload.get("title", "Untitled"),
+            "type": payload.get("type", "Unknown"),
+            "year": payload.get("year"),
+        }
+
+    return embeddings, metadata
 
 
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+def load_or_create_similarity_graph() -> nx.Graph:
+    """Create a similarity graph using cached embeddings."""
+    embeddings, metadata = _load_resource_embeddings()
+    if not embeddings:
+        raise RuntimeError(
+            "No embeddings available. Run the application once to cache resource embeddings before building the graph."  # noqa: EM102
+        )
 
+    ordered_ids = list(embeddings.keys())
+    matrix = np.stack([embeddings[rid] for rid in ordered_ids])
+    similarity_matrix = matrix @ matrix.T
+    np.fill_diagonal(similarity_matrix, -np.inf)
 
-def load_or_create_similarity_graph():
-    with open(RESOURCE_PATH, "rb") as f:
-        RESOURCES = pickle.load(f)
-    print("Create similarity graph from scratch")
-    all_descriptions = {
-        id: f"{resource.title}\n{resource.abstract}"
-        for id, resource in list(RESOURCES.items())
-    }
+    graph = nx.Graph()
+    for node_id in ordered_ids:
+        graph.add_node(node_id, **metadata[node_id])
 
-    print("a")
-    model = load_embedder(MODEL_NAME)
-    print("b")
-    store = load_embedding_store(f"{MODEL_NAME}_keywords")
-    print("c")
-    embeddings, store = get_embeddings_for_texts(
-        MODEL_NAME,
-        *zip(*all_descriptions.items()),
-        lambda batch: model.encode(
-            batch, normalize_embeddings=True, show_progress_bar=False
-        ),
-        store=store,
-    )
+    for row_index, node_id in enumerate(tqdm.tqdm(ordered_ids, desc="Building similarity graph")):
+        similarities = similarity_matrix[row_index]
+        if np.all(~np.isfinite(similarities)):
+            continue
 
-    G = nx.Graph()
-    for v, desc in all_descriptions.items():
-        G.add_node(v, {"description": desc})
-    for u in tqdm.tqdm(all_descriptions.keys()):
-        u_edges = []
+        top_indices = np.argpartition(similarities, -TOP_K_NEIGHBOURS)[-TOP_K_NEIGHBOURS:]
+        top_indices = top_indices[np.argsort(similarities[top_indices])[::-1]]
 
-        for v in all_descriptions.keys():
-            if u == v:
+        for col_index in top_indices:
+            neighbour_id = ordered_ids[col_index]
+            weight = float(similarities[col_index])
+            if not np.isfinite(weight) or neighbour_id == node_id:
                 continue
-            u_edges.append((embeddings[u] @ embeddings[v], v))
-        u_edges.sort()
-        u_edges = u_edges[::-1]
-        u_edges = u_edges[:10]
-        for w, v in u_edges:
-            G.add_edge(u, v, similarity=float(w))
+            graph.add_edge(node_id, neighbour_id, similarity=weight)
 
-    return G
+    return graph
 
 
-SIMILARITY_GRAPH = None
+SIMILARITY_GRAPH: nx.Graph | None = None
 
 
-def _load_similarity_graph():
+def _load_similarity_graph() -> None:
     global SIMILARITY_GRAPH
 
     if SIM_GRAPH.exists():
-        with open(SIM_GRAPH, "rb") as f:
-            SIMILARITY_GRAPH = pickle.load(f)
+        with SIM_GRAPH.open("rb") as fh:
+            SIMILARITY_GRAPH = pickle.load(fh)
 
     if SIMILARITY_GRAPH is None:
         SIMILARITY_GRAPH = load_or_create_similarity_graph()
 
     if not SIM_GRAPH.exists():
-        with open(SIM_GRAPH, "wb") as file:
-            pickle.dump(SIMILARITY_GRAPH, file)
-
-
-# _load_similarity_graph()
+        SIM_GRAPH.parent.mkdir(parents=True, exist_ok=True)
+        with SIM_GRAPH.open("wb") as fh:
+            pickle.dump(SIMILARITY_GRAPH, fh)
 
 
 if __name__ == "__main__":
     _load_similarity_graph()
+    print(
+        f"Similarity graph built with {SIMILARITY_GRAPH.number_of_nodes()} nodes and "
+        f"{SIMILARITY_GRAPH.number_of_edges()} edges. Saved to {SIM_GRAPH}."
+    )
