@@ -17,10 +17,14 @@ def load_embedder(model_name: str) -> SentenceTransformer:
         )
     return SentenceTransformer(model_name)
 
+
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-all_descriptions = { id: f"{resource.title}\n{resource.abstract}" for id, resource in list(RESOURCES.items()) }
+all_descriptions = {
+    id: f"{resource.title}\n{resource.abstract}"
+    for id, resource in list(RESOURCES.items())
+}
 
 
 model = load_embedder(MODEL_NAME)
@@ -28,19 +32,21 @@ store = load_embedding_store(f"{MODEL_NAME}_keywords")
 embeddings, store = get_embeddings_for_texts(
     MODEL_NAME,
     *zip(*all_descriptions.items()),
-    lambda batch: model.encode(batch, normalize_embeddings=True, show_progress_bar=False),
+    lambda batch: model.encode(
+        batch, normalize_embeddings=True, show_progress_bar=False
+    ),
     store=store,
 )
 
 
-
 G = nx.Graph()
 for v, desc in all_descriptions.items():
-    G.add_node(v, { "description": desc })
+    G.add_node(v, {"description": desc})
 for u in all_descriptions.keys():
     u_edges = []
     for v in all_descriptions.keys():
-        if u == v: continue
+        if u == v:
+            continue
         u_edges.append((embeddings[u] @ embeddings[v], v))
     u_edges.sort()
     u_edges = u_edges[::-1]

@@ -23,6 +23,7 @@ from utils.openalex_utils import (
     summarise_reference,
     resolve_best_link,
 )
+
 EMBED_MODEL = "text-embedding-3-small"
 EMBED_BATCH_SIZE = 64
 EMBED_MAX_CHARS = 6000
@@ -254,7 +255,9 @@ def _load_experiments():
 def _get_openai_client() -> Optional[OpenAI]:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key and st is not None:
-        api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else None
+        api_key = (
+            st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else None
+        )
     if not api_key:
         return None
     return OpenAI(api_key=api_key)
@@ -397,7 +400,9 @@ def _search_fallback(query: str, limit: int) -> List[Tuple[int, ResourceType, fl
     return hits
 
 
-def search_resources(query: str, limit: int = 10) -> List[Tuple[int, ResourceType, float]]:
+def search_resources(
+    query: str, limit: int = 10
+) -> List[Tuple[int, ResourceType, float]]:
     if not query or not query.strip():
         return []
 

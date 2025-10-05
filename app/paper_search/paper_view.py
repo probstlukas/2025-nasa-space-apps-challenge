@@ -8,21 +8,27 @@ import streamlit.components.v1 as components
 
 from utils import paper_chat
 import utils.resource_manager as R
+from utils.similarity_graph import SIMILARITY_GRAPH
 
 
 def setup_paper_view(resource_id: int, resource: R.PaperResource):
-    
+
     st.header(f"📘 {resource.title}")
 
-    tabs = st.tabs([
-        "Overview",
-        "Read Paper",
-        "Citation Graph",
-        "Experiments",
-        "Referenced Work",
-        "Q&A",])
-    
-    (overview_tab, read_tab, citation_tab, experiments_tab, references_tab, qa_tab) = tabs
+    tabs = st.tabs(
+        [
+            "Overview",
+            "Read Paper",
+            "Citation Graph",
+            "Experiments",
+            "Referenced Work",
+            "Q&A",
+        ]
+    )
+
+    (overview_tab, read_tab, citation_tab, experiments_tab, references_tab, qa_tab) = (
+        tabs
+    )
 
     paper_url = resource.paper_url
     pdf_url = resource.pdf_url
@@ -66,7 +72,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             try:
                 st.pdf(pdf_bytes, height=850)
             except Exception:
-                st.warning("Inline PDF viewer unavailable. Use the links below instead.")
+                st.warning(
+                    "Inline PDF viewer unavailable. Use the links below instead."
+                )
                 if pdf_url:
                     components.iframe(pdf_url, height=850)
         if pdf_url:
@@ -139,7 +147,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             st.session_state[pdf_text_key] = pdf_text
 
         pdf_index: Optional[Dict[str, Any]] = st.session_state.get(pdf_index_key)
-        retrieval_results: List[Dict[str, Any]] = st.session_state.get(retrieval_key, [])
+        retrieval_results: List[Dict[str, Any]] = st.session_state.get(
+            retrieval_key, []
+        )
 
         support_placeholder = st.empty()
 
@@ -160,7 +170,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
                                 unsafe_allow_html=False,
                             )
                     else:
-                        st.info("No supporting passages yet. Ask a question to fetch relevant snippets.")
+                        st.info(
+                            "No supporting passages yet. Ask a question to fetch relevant snippets."
+                        )
                 if truncated:
                     approx_chars = paper_chat.approx_indexed_character_count()
                     st.caption(
@@ -180,7 +192,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
                 "Hi! I'm ready to discuss this paper. I'm grounded in its title, abstract, and can pull in PDF passages when needed."
             ),
         }
-        chat_history: List[Dict[str, str]] = st.session_state.setdefault(chat_state_key, [intro_message])
+        chat_history: List[Dict[str, str]] = st.session_state.setdefault(
+            chat_state_key, [intro_message]
+        )
 
         chat_placeholder = st.empty()
 
@@ -191,9 +205,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             role_class = "paper-chat-user" if role == "user" else "paper-chat-assistant"
             icon = "🤔" if role == "user" else "🔭"
             return (
-                f"<div class=\"paper-chat-message {role_class}\">"
-                f"<div class=\"paper-chat-avatar\">{icon}</div>"
-                f"<div class=\"paper-chat-bubble\">{safe_content}</div>"
+                f'<div class="paper-chat-message {role_class}">'
+                f'<div class="paper-chat-avatar">{icon}</div>'
+                f'<div class="paper-chat-bubble">{safe_content}</div>'
                 "</div>"
             )
 
@@ -258,7 +272,9 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
             def compose(active_text: Optional[str] = None) -> str:
                 body = "".join(_format_message(entry) for entry in messages)
                 if active_text:
-                    body += _format_message({"role": "assistant", "content": active_text})
+                    body += _format_message(
+                        {"role": "assistant", "content": active_text}
+                    )
                 return style_block + f"<div class='paper-chat-scroll'>{body}</div>"
 
             chat_placeholder.markdown(compose(), unsafe_allow_html=True)
@@ -318,14 +334,15 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
                     pdf_index = pdf_index_local
 
                 if pdf_index_local:
-                    retrieval_passages = paper_chat.retrieve_passages(user_prompt, pdf_index_local, client)
+                    retrieval_passages = paper_chat.retrieve_passages(
+                        user_prompt, pdf_index_local, client
+                    )
 
             st.session_state[retrieval_key] = retrieval_passages
             render_supporting_passages(
                 retrieval_passages,
                 truncated=bool(pdf_index and pdf_index.get("truncated")),
             )
-
 
             if retrieval_passages:
                 formatted = "\n\n".join(
