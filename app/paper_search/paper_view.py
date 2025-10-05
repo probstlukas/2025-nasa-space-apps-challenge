@@ -11,21 +11,18 @@ import utils.resource_manager as R
 
 
 def setup_paper_view(resource_id: int, resource: R.PaperResource):
-    (
-        overview_tab,
-        read_tab,
-        citation_tab,
-        experiments_tab,
-        references_tab,
-        qa_tab,
-    ) = st.tabs([
+    
+    st.header(f"📘 {resource.title}")
+
+    tabs = st.tabs([
         "Overview",
         "Read Paper",
         "Citation Graph",
         "Experiments",
         "Referenced Work",
-        "Q&A",
-    ])
+        "Q&A",])
+    
+    (overview_tab, read_tab, citation_tab, experiments_tab, references_tab, qa_tab) = tabs
 
     paper_url = resource.paper_url
     pdf_url = resource.pdf_url
