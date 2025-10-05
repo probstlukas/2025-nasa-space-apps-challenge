@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 from pandas import DataFrame, read_csv
 
 # from pyalex import config as pyalex_config, invert_abstract
@@ -10,13 +10,13 @@ from utils.openalex_utils import (
     fetch_work_by_title,
     fetch_referenced_works,
     summarise_reference,
+    resolve_best_link,
 )
 
 
 class PaperResource:
-    def __init__(self, title: str, url: str):
+    def __init__(self, title: str):
         self.title = title
-        self.url = url
         self.type = "Publication"
         self.icon = "📄"
         self._data = None
@@ -94,13 +94,23 @@ class PaperResource:
             return reference_label_list
         return None
 
+    @property
+    def url(self) -> Optional[Tuple[str, str]]:
+        if self.data is None:
+            return None
+        link_info = resolve_best_link(self.data)
+        primary_link = link_info.get("url")
+        if primary_link:
+            label = link_info.get("label") or "Source"
+            return label, primary_link
+        return None
+
     def get_property(self, key: str, default=None):
         if self.data is not None:
             return self.data.get(key, default)
         return default
 
     title: str
-    url: str
     data: Optional[Dict[str, Any]]
 
 
@@ -133,7 +143,7 @@ def _load_resources() -> DataFrame:
     data = df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 
     for _, row in data.iterrows():
-        RESOUCES[gen_id()] = PaperResource(title=row["Title"], url=row["Link"])
+        RESOUCES[gen_id()] = PaperResource(title=row["Title"])
 
 
 # Load resources statically once on server startup

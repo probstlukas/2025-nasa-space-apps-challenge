@@ -40,7 +40,7 @@ else:
         on_click=on_click,
     )
 
-    st.header(f"📘 Paper title: {resource.title}")
+    st.header(f"📘 {resource.title}")
 
     if isinstance(resource, R.PaperResource):
         resource_type = "paper"

@@ -11,11 +11,16 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
     with tabs[0]:
         authors = resource.authors
         year = resource.year
-        infos = [year]
+        infos = [str(year)]
         if authors is not None:
-            infos.append(authors)
+            infos.append(", ".join(authors))
 
         st.write(" • ".join(infos))
+
+        url = resource.url
+        if url:
+            url_label, primary_link = url
+            st.markdown(f"[View on {url_label}]({primary_link})")
 
         abstract = resource.abstract
         with st.container(border=True):
@@ -24,24 +29,6 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
                 st.write(abstract)
             else:
                 st.info("No abstract available for this work.")
-
-        # Add metadata below the abstract as rows
-        with st.container():
-            authors = resource.authors
-            year = resource.year
-            infos = [year]
-            if authors is not None:
-                infos.append(authors)
-
-            st.write(" • ".join(infos))
-
-            # URL / Link
-            st.markdown("**Link**")
-            url = resource.url
-            if url:
-                st.markdown(f"[Open resource]({url})", unsafe_allow_html=True)
-            else:
-                st.write("N/A")
 
     with tabs[1]:
         st.subheader("Citation Graph")

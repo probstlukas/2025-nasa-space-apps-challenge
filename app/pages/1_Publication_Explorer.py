@@ -25,7 +25,9 @@ def load_publications() -> DataFrame:
 
 
 st.title("Publication Explorer")
-st.caption("Browse the NASA bioscience corpus and inspect individual citation contexts.")
+st.caption(
+    "Browse the NASA bioscience corpus and inspect individual citation contexts."
+)
 
 publications = load_publications()
 if publications.empty:
@@ -100,7 +102,11 @@ else:
             "references": summaries,
         }
         for idx, reference in enumerate(
-            sorted(summaries, key=lambda item: item.get("publication_year") or 0, reverse=True),
+            sorted(
+                summaries,
+                key=lambda item: item.get("publication_year") or 0,
+                reverse=True,
+            ),
             start=1,
         ):
             title = reference.get("title") or reference.get("id") or "Untitled"
