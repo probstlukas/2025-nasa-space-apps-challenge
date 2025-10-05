@@ -1,14 +1,77 @@
 # 🔭 2025 NASA Space Apps Challenge
 
 ## Usage
+### Add OpenAI API key
+Create the file `.streamlit/secrets.toml` with the content:
+```bash
+OPENAI_API_KEY="Your-OpenAI-API-Key"
+```
+
+### Run the app
+Start the app using docker. Building might take a few seconds.
 ```bash
 docker build -t nasa-space-apps .
 docker run -p 8080:8080 nasa-space-apps
 ```
 
+If the webpage does not open automatically, open 
+```
+http://0.0.0.0:8080
+```
+in your browser.
+
+
+## About the project
+**BioScholar** is an AI-powered dashboard designed to make NASA’s space biology publications easily accessible and explorable. By combining intelligent Q&A, semantic graph visualizations, advanced search, and integrated PDF support, the platform enables users to uncover insights from decades of experiments in a fast, interactive, and intuitive way.  
+
+This project was developed for the **NASA Space Apps Challenge** and addresses the **Space Biology Knowledge Engine** challenge.
+
+---
+
+### Features
+
+- **Intelligent Q&A**  
+  Ask questions about publications and receive answers with precise passage citations for improved reliability.  
+
+- **Semantic Graph View**  
+  Visualize the most relevant papers related to a selected resource, with AI-generated similarity scores linking related content.  
+
+- **Advanced Search**  
+  Quickly locate publications and experimental resources using efficient, context-aware search.  
+
+- **Cross-Referencing**  
+  Explore which publications reference specific experiments, and which experiments are cited by which publications.  
+
+- **Integrated PDF Viewer**  
+  Preview and interact with full-text PDFs directly within the app whenever available.  
+
+---
+
+### Innovation
+
+BioScholar combines modern AI tools (LLM-based embeddings and Q&A with passage citations) with classical graph algorithms (like a modified PageRank) to connect data in novel ways. The system is designed to efficiently incorporate new data sources, such as mission protocols, demonstrating how AI and graph-based methods can transform the exploration of complex scientific datasets.  
+
+---
+
+### Tools & Tech Stack
+
+- **Programming & Frameworks:** Python, Streamlit (web interface)  
+- **AI & NLP:**  
+  - GPT-4o-mini for Q&A  
+  - text-embedding-3-small for embeddings, semantic search, similarity scoring, and retrieval-augmented generation (RAG)  
+- **Graph Analysis:** NetworkX for building and analyzing semantic graphs  
+- **Development Tools:** VSCode, Codex, ChatGPT  
+
+---
+
+
+
+
+
+
+
 
 ## Challenge Description
-
 ### Summary
 
 Enable a new era of human space exploration! NASA has been performing biology experiments in space for decades, generating a tremendous amount of information that will need to be considered as humans prepare to revisit the Moon and explore Mars. Although this knowledge is publicly available, it can be difficult for potential users to find information that pertains to their specific interests. Your challenge is to build a dynamic dashboard that leverages artificial intelligence (AI), knowledge graphs, and/or other tools to summarize a set of NASA bioscience publications and enables users to explore the impacts and results of the experiments these publications describe.
