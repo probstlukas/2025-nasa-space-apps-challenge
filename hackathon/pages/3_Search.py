@@ -1,104 +1,281 @@
+import os
+from typing import Dict, List, Sequence
+
+import numpy as np
 import streamlit as st
-import networkx as nx
-from random import seed, randrange, random
-seed(1)
-import matplotlib.pyplot as plt
+from pandas import DataFrame, read_csv
+from pyalex import config as pyalex_config
 
-st.set_page_config(page_title="Search", page_icon="🔍", layout="wide")
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:  # pragma: no cover - handled at runtime
+    SentenceTransformer = None
 
-
-
-N = 20
-
-G = nx.Graph()
-G.add_nodes_from(range(N))
-edges = set()
-edges_with_similarity = []
-while len(edges) < 40:
-    u = randrange(0, N)
-    v = randrange(0, N - 1)
-    if v >= u: v += 1
-    if u > v: u, v = v, u
-    if (u, v) in edges: continue
-    edges.add((u, v))
-    edges_with_similarity.append((u, v, random()))
-
-for u, v, sim in edges_with_similarity:
-    G.add_edge(u, v, similarity=sim)
+from utils.config import PUBLICATIONS_PATH
+from utils.embedding_store import (
+    get_embeddings_for_texts,
+    load_embedding_store,
+    save_embedding_store,
+)
+from utils.openalex_utils import (
+    compose_work_text,
+    fetch_work_by_title,
+    get_abstract_text,
+    get_cache,
+    iterate_cached_works,
+    resolve_best_link,
+    summarise_reference,
+)
+from utils.ui import render_app_sidebar
 
 
-def create_relevance_graph(c, lim):
-    relevance = [0] * G.order()
-    relevance[c] = 1.0
+st.set_page_config(page_title="Semantic Search", page_icon="🔍", layout="wide")
+pyalex_config.email = "lukas.probst@student.kit.edu"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
-    damping = 0.85
+render_app_sidebar()
 
-    for _ in range(100):
-        new_relevance = [0] * G.order()
-        for u in range(G.order()):
-            similarity_sum = 0
-            for v in G.neighbors(u):
-                if v == c: continue
-                similarity_sum += G.get_edge_data(u, v)["similarity"]
-            for v in G.neighbors(u):
-                if v == c: continue
-                new_relevance[v] += relevance[u] * damping * G.get_edge_data(u, v)["similarity"] / similarity_sum
-            new_relevance[c] += relevance[u] * (1 - damping)
-        relevance = new_relevance
 
-    norm = relevance[c]
-    for i in range(G.order()):
-        relevance[i] = min(relevance[i] / norm, 1.0)
+@st.cache_data(show_spinner=False)
+def load_publications() -> DataFrame:
+    df = read_csv(PUBLICATIONS_PATH)
+    return df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 
-    relevant = [i for i in range(N) if relevance[i] >= sorted(relevance)[G.order() - min(G.order(), lim)]]
-    R = nx.induced_subgraph(G, relevant)
 
-    fig, ax = plt.subplots()
-    fig.set_size_inches(5, 5)
-    ax.axis("off")
+def ensure_metadata_availability(titles: Sequence[str]) -> None:
+    cache = get_cache()
+    missing = [title for title in titles if title not in cache["works_by_title"]]
+    if not missing:
+        st.sidebar.success("All publications already have cached OpenAlex metadata.")
+        return
 
-    pos = nx.spring_layout(G, seed=0)
-    nx.draw_networkx_nodes(
-        R, pos,
-        node_color=["#888888" for _ in R.nodes],
-        node_size=[2000 - 10 for _ in R.nodes],
-        ax=ax
+    progress = st.sidebar.progress(0.0)
+    status = st.sidebar.empty()
+    for idx, title in enumerate(missing, start=1):
+        status.write(f"Fetching metadata: {title}")
+        fetch_work_by_title(title, show_status=False)
+        progress.progress(idx / len(missing))
+    status.empty()
+    progress.empty()
+    st.sidebar.success(f"Fetched {len(missing)} additional OpenAlex records.")
+
+
+def build_corpus(titles: Sequence[str]) -> List[Dict[str, str]]:
+    works = iterate_cached_works(titles)
+    corpus: List[Dict[str, str]] = []
+    for work in works:
+        text_blob = compose_work_text(work)
+        if not text_blob.strip():
+            continue
+        link_info = resolve_best_link(work)
+        metadata = summarise_reference(work)
+        identifier = metadata.get("id") or metadata.get("title")
+        corpus.append(
+            {
+                "id": identifier or work.get("id") or work.get("display_name") or "",
+                "title": work.get("display_name") or work.get("title") or "Untitled",
+                "year": work.get("publication_year"),
+                "text": text_blob,
+                "abstract": get_abstract_text(work),
+                "link": link_info.get("url"),
+                "link_label": link_info.get("label"),
+                "metadata": metadata,
+            }
+        )
+    return corpus
+
+
+@st.cache_resource(show_spinner=False)
+def load_embedder(model_name: str) -> SentenceTransformer:
+    if SentenceTransformer is None:
+        raise ModuleNotFoundError(
+            "sentence-transformers is required. Install it with `pip install sentence-transformers`."
+        )
+    return SentenceTransformer(model_name)
+
+
+@st.cache_resource(show_spinner=False)
+def load_embedding_cache(model_name: str) -> Dict[str, np.ndarray]:
+    return load_embedding_store(model_name)
+
+
+st.title("Semantic Paper Finder")
+st.caption(
+    "Compare your query against rich OpenAlex metadata (title, abstract, topics) "
+    "to surface the most relevant publications in the NASA bioscience corpus."
+)
+
+publications = load_publications()
+all_titles = publications["Title"].tolist()
+cache = get_cache()
+coverage = len(cache["works_by_title"]) / len(all_titles) if all_titles else 0
+st.info(
+    f"OpenAlex metadata cached for {len(cache['works_by_title'])} of {len(all_titles)} papers "
+    f"({coverage:.0%} coverage)."
+)
+
+with st.sidebar.expander("Fetch or refresh metadata", expanded=False):
+    st.write(
+        "The search uses cached OpenAlex records gathered from the Publication Explorer. "
+        "Refresh to ensure all papers are available before building the index."
     )
-    nx.draw_networkx_nodes(
-        R, pos,
-        node_color=["#FC7303" if v == c else "#0066FF" for v in R.nodes],
-        node_size=[2000 * relevance[v] for v in R.nodes],
-        ax=ax
+    if st.button("Fetch missing records", width='stretch'):
+        ensure_metadata_availability(all_titles)
+
+if SentenceTransformer is None:
+    st.error(
+        "The semantic search requires the `sentence-transformers` package. "
+        "Install it in your environment and reload the page."
     )
-    nx.draw_networkx_labels(
-        R, pos,
-        labels={ v: f"[{v}]" for v in R.nodes },
-        ax=ax
+    st.stop()
+
+corpus = build_corpus(all_titles)
+if not corpus:
+    st.warning(
+        "No cached OpenAlex records found yet. Fetch metadata first via the "
+        "Publication Explorer or the refresh button above."
     )
-    nx.draw_networkx_edges(R, pos, edge_color="#888888", ax=ax)
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    nx.draw_networkx_edges(G, pos, edge_color="#888888", alpha=0.4, ax=ax)
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    st.stop()
 
-    relevant.sort(key=lambda v: -relevance[v])
-    return relevant, fig
+model = load_embedder(MODEL_NAME)
+store = load_embedding_cache(MODEL_NAME)
 
+identifiers = [entry["id"] or entry["title"] for entry in corpus]
+texts = [entry["text"] for entry in corpus]
 
+embeddings, store = get_embeddings_for_texts(
+    MODEL_NAME,
+    identifiers,
+    texts,
+    lambda batch: model.encode(batch, normalize_embeddings=True, show_progress_bar=False),
+    store=store,
+)
+save_embedding_store(MODEL_NAME, store)
 
-search_query = st.text_input("Search here")
-description_column, connection_column = st.columns([0.5, 0.5])
-if search_query:
-    if not search_query.isdigit():
-        description_column.write(f"The search query \"{search_query}\" is not a number")
-    else:
-        c = int(search_query)
-        if c >= N:
-            description_column.write(f"The search query {c} is too large")
+st.sidebar.header("Search Options")
+results_count = st.sidebar.slider("Number of results", min_value=3, max_value=20, value=6)
+score_threshold = st.sidebar.slider(
+    "Minimum similarity", min_value=0.0, max_value=1.0, value=0.25, step=0.05
+)
+
+query = st.text_input("Describe the papers you are looking for", "microgravity stem cell differentiation")
+if not query.strip():
+    st.stop()
+
+query_embedding = model.encode([query], normalize_embeddings=True, show_progress_bar=False)[0]
+
+scores = embeddings @ query_embedding
+ranked_indices = np.argsort(scores)[::-1]
+
+st.markdown("### Top Matches")
+num_displayed = 0
+results_payload: List[Dict[str, str]] = []
+
+for idx in ranked_indices:
+    score = float(scores[idx])
+    if score < score_threshold:
+        continue
+    entry = corpus[idx]
+    year = entry.get("year")
+    header = entry["title"]
+    if year:
+        header += f" ({year})"
+    link = entry.get("link")
+    label = entry.get("link_label")
+    badge = f" via {label}" if label else ""
+
+    st.markdown(f"#### {header}")
+    st.write(f"Similarity score: {score:.2f}{badge}")
+    if link:
+        st.markdown(f"[Open {label or 'link'}]({link})")
+
+    abstract = entry.get("abstract")
+    if abstract:
+        snippet = abstract[:600] + ("…" if len(abstract) > 600 else "")
+        st.write(snippet)
+
+    details = entry["metadata"]
+    if details.get("referenced_works"):
+        st.caption(
+            f"References tracked: {len(details['referenced_works'])}. "
+            "Open the citation graph page after selecting this publication in the explorer "
+            "to visualise its neighbourhood."
+        )
+    st.divider()
+    num_displayed += 1
+
+    results_payload.append(
+        {
+            "id": entry["id"],
+            "title": entry["title"],
+            "year": year,
+            "similarity": score,
+            "link": link,
+            "link_label": label,
+            "abstract": entry.get("abstract"),
+            "text": entry.get("text"),
+        }
+    )
+
+    if num_displayed >= results_count:
+        break
+
+if num_displayed == 0:
+    st.warning(
+        "No papers met the similarity threshold. Lower the minimum similarity or fetch more metadata."
+    )
+else:
+    st.success("Results grounded in OpenAlex metadata. Continue refining or inspect a match in detail above.")
+    st.session_state["chat_context"] = {
+        "query": query,
+        "model_name": MODEL_NAME,
+        "results": results_payload,
+    }
+
+    if st.button("Summarise top results with LLM", width='stretch'):
+        try:
+            from openai import OpenAI
+        except ImportError:  # pragma: no cover - optional dependency
+            st.error("Install the `openai` package to enable LLM summarisation.")
         else:
-            relevant, fig = create_relevance_graph(c, 7)
-            for entry in relevant:
-                description_column.write(f"Found relevant entry {entry}")
-                description_column.divider()
-            connection_column.pyplot(fig, transparent=True)
+            api_key = st.secrets.get("openai_api_key")
+            if not api_key:
+                st.warning("`openai_api_key` not found in Streamlit secrets. Summarisation disabled.")
+            else:
+                client = OpenAI(api_key=api_key)
+                context_blocks = []
+                for result in results_payload[:results_count]:
+                    context_blocks.append(
+                        f"Title: {result['title']}\n"
+                        f"Year: {result.get('year', 'n/a')}\n"
+                        f"Similarity: {result['similarity']:.2f}\n"
+                        f"Abstract: {result.get('abstract', 'No abstract available.')}"
+                    )
+                prompt = (
+                    "You are assisting with the NASA Space Apps bioscience challenge. "
+                    "Summarise the following candidate papers and explain why they are relevant "
+                    "to the user query. Provide 3 concise bullet points."
+                )
+                try:
+                    completion = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"User query: {query}\n\n" + "\n\n".join(context_blocks)
+                                ),
+                            },
+                        ],
+                    )
+                    summary = completion.choices[0].message.content
+                    st.markdown("### Why this matters")
+                    st.write(summary)
+                    st.session_state["chat_context"]["summary"] = summary
+                except Exception as exc:  # pragma: no cover - runtime errors only
+                    st.error(f"LLM summarisation failed: {exc}")
+
+st.caption(
+    "Next step: head to the Chatbot page to interrogate these results or refine your search here."
+)
