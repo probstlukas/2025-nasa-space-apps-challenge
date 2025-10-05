@@ -38,6 +38,8 @@ render_app_sidebar()
 
 @st.cache_data(show_spinner=False)
 def load_publications() -> DataFrame:
+    print(PUBLICATIONS_PATH)
+    
     df = read_csv(PUBLICATIONS_PATH)
     return df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 

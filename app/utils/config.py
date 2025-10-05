@@ -1,5 +1,8 @@
 from pathlib import Path
 
-DATA_FOLDER = Path("..", "data")
+BASE_DIR = Path(__file__).resolve().parents[1]
 
-PUBLICATIONS_PATH = DATA_FOLDER / "SB_publication_PMC.csv"
+DATA_DIR = BASE_DIR / "data"
+PUBLICATIONS_PATH = DATA_DIR / "SB_publication_PMC.csv"
+
+LOGO_PATH = BASE_DIR / "images" / "logo.png"
