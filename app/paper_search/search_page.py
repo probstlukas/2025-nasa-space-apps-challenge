@@ -22,9 +22,25 @@ def setup_search_page(on_resource_clicked):
         results = search_resources(query)
 
         for id, resource in results:
+            # st.button(
+            #    f"📄 {resource.title} (Year: {resource.year}, Authors: {resource.authors})",
+            #    on_click=lambda id=id: on_resource_clicked(id),
+            # )
+
+            st.markdown(
+                f"""
+                **📄 {resource.title}**
+
+                *Authors:* {', '.join(resource.authors)}  
+                *Year:* {resource.year}  
+                *Type:* {resource.type}
+                """
+            )
             st.button(
-                f"📄 {resource.title} (Year: {resource.year}, Authors: {resource.get_property('Authors', default='-')})",
+                "Select",
+                key=id,
                 on_click=lambda id=id: on_resource_clicked(id),
             )
+            st.divider()
         else:
             st.info("No results found.")

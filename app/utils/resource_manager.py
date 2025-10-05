@@ -2,14 +2,23 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 from pandas import DataFrame, read_csv
 
+# from pyalex import config as pyalex_config, invert_abstract
+from pyalex.api import invert_abstract
+
 from utils.config import PUBLICATIONS_PATH
-from utils.openalex_utils import fetch_work_by_title
+from utils.openalex_utils import (
+    fetch_work_by_title,
+    fetch_referenced_works,
+    summarise_reference,
+)
 
 
 class PaperResource:
     def __init__(self, title: str, url: str):
         self.title = title
         self.url = url
+        self.type = "Publication"
+        self.icon = "📄"
         self._data = None
 
     @property
@@ -21,9 +30,69 @@ class PaperResource:
     @property
     def year(self):
         if self.data is not None:
-            return self._data.get("year", "-")
+            return self._data.get("publication_year", "-")
         else:
             return "-"
+
+    @property
+    def authors(self):
+        if self.data is None:
+            return []
+        authors = [
+            entry.get("author", {}).get("display_name")
+            for entry in self.data.get("authorships", [])
+            if isinstance(entry, dict)
+        ]
+        return authors
+
+    @property
+    def abstract(self):
+        if self.data is None:
+            return None
+
+        abstract = self.data.get("abstract")
+        if not abstract:
+            abstract = invert_abstract(self.data.get("abstract_inverted_index"))
+
+        return abstract
+
+    @property
+    def referenced_work(self):
+        if self.data is None:
+            return None
+        referenced_ids = self.data.get("referenced_works") or []
+
+        if referenced_ids:
+            referenced_works = fetch_referenced_works(tuple(referenced_ids))
+
+            if referenced_works:
+                reference_label_list = []
+                summaries = [summarise_reference(work) for work in referenced_works]
+                print(summaries)
+                for idx, reference in enumerate(
+                    sorted(
+                        summaries,
+                        key=lambda item: item.get("publication_year") or 0,
+                        reverse=True,
+                    ),
+                    start=1,
+                ):
+                    title = reference.get("title") or reference.get("id") or "Untitled"
+                    link = reference.get("link") or reference.get("id")
+                    year = reference.get("publication_year")
+                    descriptor = f"{title}"
+                    if year:
+                        descriptor += f" ({year})"
+                    if link:
+                        label = reference.get("link_label")
+                        suffix = f" _(via {label})_" if label else ""
+                        reference_label = f"{idx}. [{descriptor}]({link}){suffix}"
+                    else:
+                        reference_label = f"{idx}. {descriptor}"
+
+                    reference_label_list.append(reference_label)
+            return reference_label_list
+        return None
 
     def get_property(self, key: str, default=None):
         if self.data is not None:
@@ -39,6 +108,8 @@ class PaperResource:
 class ExperimentResource:
     title: str
     description: str
+    type: str = "Experiment"
+    icon: str = "🔬"
 
 
 ResourceType = Union[PaperResource, ExperimentResource]
