@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import pickle
+from functools import lru_cache
 from typing import Dict, Tuple
 
 import networkx as nx
 import numpy as np
 import tqdm
+from networkx.readwrite import json_graph
 
 from utils.config import RESOURCE_PATH, SIM_GRAPH
 
@@ -85,28 +88,35 @@ def load_or_create_similarity_graph() -> nx.Graph:
     return graph
 
 
-SIMILARITY_GRAPH: nx.Graph | None = None
+def save_similarity_graph(graph: nx.Graph, path=SIM_GRAPH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json_graph.node_link_data(graph)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False)
 
 
-def _load_similarity_graph() -> None:
-    global SIMILARITY_GRAPH
+def load_similarity_graph(path=SIM_GRAPH) -> nx.Graph:
+    if not path.exists():
+        raise FileNotFoundError(f"Similarity graph file not found: {path}")
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return json_graph.node_link_graph(data)
 
-    if SIM_GRAPH.exists():
-        with SIM_GRAPH.open("rb") as fh:
-            SIMILARITY_GRAPH = pickle.load(fh)
 
-    if SIMILARITY_GRAPH is None:
-        SIMILARITY_GRAPH = load_or_create_similarity_graph()
-
-    if not SIM_GRAPH.exists():
-        SIM_GRAPH.parent.mkdir(parents=True, exist_ok=True)
-        with SIM_GRAPH.open("wb") as fh:
-            pickle.dump(SIMILARITY_GRAPH, fh)
+@lru_cache(maxsize=1)
+def get_similarity_graph() -> nx.Graph:
+    try:
+        return load_similarity_graph()
+    except FileNotFoundError:
+        graph = load_or_create_similarity_graph()
+        save_similarity_graph(graph)
+        return graph
 
 
 if __name__ == "__main__":
-    _load_similarity_graph()
+    graph = get_similarity_graph()
+    save_similarity_graph(graph)
     print(
-        f"Similarity graph built with {SIMILARITY_GRAPH.number_of_nodes()} nodes and "
-        f"{SIMILARITY_GRAPH.number_of_edges()} edges. Saved to {SIM_GRAPH}."
+        f"Similarity graph built with {graph.number_of_nodes()} nodes and "
+        f"{graph.number_of_edges()} edges. Saved to {SIM_GRAPH}."
     )

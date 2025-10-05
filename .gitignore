@@ -1,6 +1,6 @@
 *.code-workspace
 *.pyc
-*.json
+openalex_cache.json
 *.npz
 
 # Contains secrets.toml for secret keys

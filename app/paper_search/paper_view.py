@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 
 from utils import paper_chat
 import utils.resource_manager as R
-from utils.similarity_graph import SIMILARITY_GRAPH
+from utils.similarity_graph import get_similarity_graph
 
 
 def setup_paper_view(resource_id: int, resource: R.PaperResource):
@@ -19,14 +19,14 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
         [
             "Overview",
             "Read Paper",
-            "Citation Graph",
+            "Relevant Work",
             "Experiments",
             "Referenced Work",
             "Q&A",
         ]
     )
 
-    (overview_tab, read_tab, citation_tab, experiments_tab, references_tab, qa_tab) = (
+    (overview_tab, read_tab, relevant_work_tab, experiments_tab, references_tab, qa_tab) = (
         tabs
     )
 
@@ -82,13 +82,67 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
         if not pdf_url:
             st.info("No PDF link detected for this work.")
 
-    with citation_tab:
+    with relevant_work_tab:
         st.subheader("Citation Graph")
-        G = nx.DiGraph()
-        # G.add_edges_from(resource.get("citations", []))
-        fig, ax = plt.subplots()
-        nx.draw(G, with_labels=True, ax=ax)
-        st.pyplot(fig)
+        graph = get_similarity_graph()
+        if resource_id not in graph:
+            st.info("No citation relationships found for this paper yet.")
+        else:
+            neighbors = []
+            for nbr in graph.neighbors(resource_id):
+                data = graph[resource_id][nbr]
+                similarity = float(data.get("similarity", 0.0))
+                neighbors.append((nbr, similarity))
+            neighbors.sort(key=lambda item: item[1], reverse=True)
+
+            if not neighbors:
+                st.info("This paper currently has no related entries in the citation graph.")
+            else:
+                top_neighbors = neighbors[:10]
+
+                # Visualise ego graph (paper + top neighbours)
+                subgraph_nodes = [resource_id] + [node for node, _ in top_neighbors]
+                subgraph = graph.subgraph(subgraph_nodes).copy()
+
+                pos = nx.spring_layout(subgraph, seed=42)
+                fig, ax = plt.subplots(figsize=(6, 4))
+                node_colors = ["#ff6b6b" if node == resource_id else "#4d96ff" for node in subgraph]
+                nx.draw_networkx_nodes(
+                    subgraph,
+                    pos,
+                    node_color=node_colors,
+                    ax=ax,
+                    node_size=700,
+                    alpha=0.9,
+                )
+                labels = {}
+                for node in subgraph:
+                    resource_obj = R.RESOURCES.get(node)
+                    labels[node] = (resource_obj.title if resource_obj else graph.nodes[node].get("title", str(node)))[:24]
+                nx.draw_networkx_labels(subgraph, pos, labels=labels, font_size=8, ax=ax)
+                edge_weights = [max(0.5, subgraph[u][v].get("similarity", 0.0) * 8) for u, v in subgraph.edges()]
+                nx.draw_networkx_edges(subgraph, pos, width=edge_weights, alpha=0.6, ax=ax)
+                ax.axis("off")
+                st.pyplot(fig)
+
+                st.markdown("#### Top Related Works")
+                for neighbor_id, score in top_neighbors:
+                    neighbor_resource = R.RESOURCES.get(neighbor_id)
+                    title = neighbor_resource.title if neighbor_resource else graph.nodes[neighbor_id].get("title", "Untitled")
+                    type_label = neighbor_resource.type if neighbor_resource else graph.nodes[neighbor_id].get("type", "Unknown")
+                    year_label = neighbor_resource.year if neighbor_resource else graph.nodes[neighbor_id].get("year", "-")
+
+                    st.markdown(
+                        f"**{title}**  \n"
+                        f"Type: {type_label}  \n"
+                        f"Year: {year_label}  \n"
+                        f"Similarity: {score:.3f}"
+                    )
+                    if neighbor_resource:
+                        if st.button("Open", key=f"open-similar-{neighbor_id}"):
+                            st.session_state.selected_resource = neighbor_id
+                            st.experimental_rerun()
+                    st.divider()
 
     with experiments_tab:
         st.subheader("Experiments")

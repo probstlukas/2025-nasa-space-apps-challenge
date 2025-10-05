@@ -457,6 +457,30 @@ def _serialize_repository() -> Dict[str, Any]:
     return {"metadata": metadata, "embeddings": embeddings}
 
 
+def _write_repository_snapshot(path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp_file = tempfile.NamedTemporaryFile(
+        "wb",
+        delete=False,
+        dir=path.parent,
+        prefix="resources_",
+        suffix=".tmp",
+    )
+    try:
+        with tmp_file as handle:
+            pickle.dump(payload, handle)
+        os.replace(tmp_file.name, path)
+    except Exception:  # noqa: BLE001
+        os.unlink(tmp_file.name)
+        raise
+
+
+def save_repository_snapshot(path=RESOURCE_PATH) -> None:
+    payload = _serialize_repository()
+    _write_repository_snapshot(path, payload)
+
+
 def _deserialize_resources(snapshot: Dict[str, Any]) -> None:
     global RESOURCES, PAPER_TITLE_INDEX, _next_id
 
@@ -639,32 +663,16 @@ def _load_resources() -> None:
     updated = _ensure_embeddings()
 
     if updated or snapshot is None:
-        RESOURCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
+        use_streamlit_ui = _streamlit_active()
         spinner: ContextManager[Any]
-        if st is not None:
+        if use_streamlit_ui:
             spinner = st.spinner("Saving resource snapshot…")
         else:
             spinner = nullcontext()
 
-        repository_payload = _serialize_repository()
-
         with spinner:
-            tmp_file = tempfile.NamedTemporaryFile(
-                "wb",
-                delete=False,
-                dir=RESOURCE_PATH.parent,
-                prefix="resources_",
-                suffix=".tmp",
-            )
-            try:
-                with tmp_file as handle:
-                    pickle.dump(repository_payload, handle)
-                os.replace(tmp_file.name, RESOURCE_PATH)
-            except Exception:
-                os.unlink(tmp_file.name)
-                raise
-        if st is None:
+            save_repository_snapshot(RESOURCE_PATH)
+        if not use_streamlit_ui:
             print(f"Resource snapshot saved to {RESOURCE_PATH}")
 
 
