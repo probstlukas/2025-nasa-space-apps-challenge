@@ -21,6 +21,7 @@ class PaperResource:
         self.type = "Publication"
         self.icon = "📄"
         self._data = None
+        self._experiments = []
 
     @property
     def data(self) -> Optional[Dict[str, Any]]:
@@ -122,8 +123,9 @@ class PaperResource:
             return self.data.get(key, default)
         return default
 
-    title: str
-    data: Optional[Dict[str, Any]]
+    @property
+    def experiments(self) -> List["ExperimentResource"]:
+        return self._experiments
 
 
 class ExperimentResource:
@@ -161,11 +163,16 @@ class ExperimentResource:
     @property
     def publications(self) -> List[PaperResource]:
         titles = self._metadata.get("study publication title", None)
+        if isinstance(titles, str):
+            titles = [titles]
+
         publications = []
+        if titles is None:
+            return publications
         for title in titles:
             publication_id = PAPER_TITLE_INDEX.get(title, None)
             if publication_id is None:
-                print(f"Could not find publication with title '{title}'")
+                # print(f"Could not find publication with title '{title}'")
                 continue
 
             publication = RESOURCES[publication_id]
@@ -219,7 +226,12 @@ def _load_experiments():
 
     for osd_key, experiment in experiment_data.items():
         metadata: dict = experiment["metadata"]
-        RESOURCES[gen_id()] = ExperimentResource(osd_key, metadata)
+        id = gen_id()
+        resource = ExperimentResource(osd_key, metadata)
+        RESOURCES[id] = resource
+
+        for pub in resource.publications:
+            pub._experiments.append(resource)
 
     """
     dict_keys(['authoritative source url', 'flight program', 'mission', 'material type', 'project identifier', 'accession', 'identifiers', 'study identifier', 'study protocol name', 'study assay technology type', 'acknowledgments', 'study assay technology platform', 'study person', 'study protocol type', 'space program', 'study title', 'study factor type', 'study public release date', 'parameter value', 'thumbnail', 'study factor name', 'study assay measurement type', 'project type', 'factor value', 'data source accession', 'project title', 'study funding agency', 'study protocol description', 'experiment platform', 'characteristics', 'study grant number', 'study publication author list', 'project link', 'study publication title', 'managing nasa center', 'study description', 'organism', 'data source type'])
@@ -230,7 +242,9 @@ def _load_resources() -> DataFrame:
     if len(RESOURCES) > 0:
         return
 
+    # Important to load publications before experiments
     _load_publications()
+
     _load_experiments()
 
 

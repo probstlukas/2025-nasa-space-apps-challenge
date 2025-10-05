@@ -37,7 +37,6 @@ def setup_experiment_view(resource_id: int, resource: R.ExperimentResource):
     with tabs[1]:
         st.subheader("Publications")
         publications = resource.publications
-        print(publications)
 
         if len(publications) > 0:
             for pub in publications:

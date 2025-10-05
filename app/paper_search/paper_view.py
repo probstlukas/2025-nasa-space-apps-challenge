@@ -46,7 +46,22 @@ def setup_paper_view(resource_id: int, resource: R.PaperResource):
 
     with tabs[2]:
         st.subheader("Experiments")
-        # st.write(", ".join(resource.get("experiments", [])))
+
+        experiments = resource.experiments
+        if len(experiments) > 0:
+            for exp in experiments:
+                st.markdown(
+                    f"""
+                    **{exp.icon} {exp.title}**
+
+                    *Authors:* {', '.join(exp.authors)}  
+                    *Year:* {exp.year}  
+                    *Type:* {exp.type}
+                    """
+                )
+                st.divider()
+        else:
+            st.write("No experiments on this publication available")
 
     with tabs[3]:
         referenced_work = resource.referenced_work
