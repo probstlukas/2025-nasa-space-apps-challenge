@@ -1,11 +1,12 @@
-from dataclasses import dataclass
+import datetime
+import pickle
 from typing import Any, Dict, Optional, Tuple, Union
 from pandas import DataFrame, read_csv
 
 # from pyalex import config as pyalex_config, invert_abstract
 from pyalex.api import invert_abstract
 
-from utils.config import PUBLICATIONS_PATH
+from utils.config import PUBLICATIONS_PATH, EXPERIMENTS_PATH
 from utils.openalex_utils import (
     fetch_work_by_title,
     fetch_referenced_works,
@@ -68,7 +69,7 @@ class PaperResource:
             if referenced_works:
                 reference_label_list = []
                 summaries = [summarise_reference(work) for work in referenced_works]
-                print(summaries)
+
                 for idx, reference in enumerate(
                     sorted(
                         summaries,
@@ -114,16 +115,40 @@ class PaperResource:
     data: Optional[Dict[str, Any]]
 
 
-@dataclass
 class ExperimentResource:
-    title: str
-    description: str
-    type: str = "Experiment"
-    icon: str = "🔬"
+    def __init__(self, osd_key: str, metadata: Dict[str, Any]):
+        self.osd_key = osd_key
+        self.type = "Experiment"
+        self.icon = "🔬"
+        self._metadata = metadata
+
+    @property
+    def title(self):
+        return self._metadata.get("study title", None)
+
+    @property
+    def description(self):
+        return self._metadata.get("study description")
 
     @property
     def abstract(self):
         return self.description
+
+    @property
+    def authors(self):
+        return self._metadata.get("study publication author list")
+
+    @property
+    def year(self):
+        timestamp = self._metadata.get("study public release date", None)
+        if timestamp is None:
+            return timestamp
+        else:
+            year = datetime.datetime.utcfromtimestamp(timestamp).year
+            return str(year)
+
+    def get_property(self, key: str):
+        return self._metadata.get(key, None)
 
 
 ResourceType = Union[PaperResource, ExperimentResource]
@@ -142,12 +167,33 @@ def gen_id():
     return id
 
 
-def _load_resources() -> DataFrame:
+def _load_publications():
     df = read_csv(PUBLICATIONS_PATH)
     data = df.dropna(subset=["Title"]).drop_duplicates(subset=["Title"])
 
     for _, row in data.iterrows():
         RESOURCES[gen_id()] = PaperResource(title=row["Title"])
+
+
+def _load_experiments():
+    with open(EXPERIMENTS_PATH, "rb") as f:
+        experiment_data: Dict[str, dict] = pickle.load(f)
+
+    for osd_key, experiment in experiment_data.items():
+        metadata: dict = experiment["metadata"]
+        RESOURCES[gen_id()] = ExperimentResource(osd_key, metadata)
+
+    """
+    dict_keys(['authoritative source url', 'flight program', 'mission', 'material type', 'project identifier', 'accession', 'identifiers', 'study identifier', 'study protocol name', 'study assay technology type', 'acknowledgments', 'study assay technology platform', 'study person', 'study protocol type', 'space program', 'study title', 'study factor type', 'study public release date', 'parameter value', 'thumbnail', 'study factor name', 'study assay measurement type', 'project type', 'factor value', 'data source accession', 'project title', 'study funding agency', 'study protocol description', 'experiment platform', 'characteristics', 'study grant number', 'study publication author list', 'project link', 'study publication title', 'managing nasa center', 'study description', 'organism', 'data source type'])
+    """
+
+
+def _load_resources() -> DataFrame:
+    if len(RESOURCES) > 0:
+        return
+
+    _load_publications()
+    _load_experiments()
 
 
 # Load resources statically once on server startup

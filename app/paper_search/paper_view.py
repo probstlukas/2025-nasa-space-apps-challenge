@@ -6,6 +6,7 @@ import utils.resource_manager as R
 
 
 def setup_paper_view(resource_id: int, resource: R.PaperResource):
+    st.header(f"📘 {resource.title}")
     tabs = st.tabs(["Overview", "Citation Graph", "Experiments", "Referenced Work"])
 
     with tabs[0]:

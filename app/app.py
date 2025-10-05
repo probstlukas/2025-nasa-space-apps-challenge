@@ -29,7 +29,7 @@ if st.session_state.selected_resource is None:
 else:
     # ---- Paper Details View ----
     resource_id = st.session_state.selected_resource
-    resource = R.RESOUCES.get(resource_id)
+    resource = R.RESOURCES.get(resource_id)
 
     def on_click():
         st.session_state.update(selected_resource=None)
@@ -40,8 +40,6 @@ else:
         on_click=on_click,
     )
 
-    st.header(f"📘 {resource.title}")
-
     if isinstance(resource, R.PaperResource):
         resource_type = "paper"
     elif isinstance(resource, R.ExperimentResource):
@@ -50,7 +48,6 @@ else:
         raise ValueError(f"Unknown resource type '{type(resource).__name__}'")
 
     if resource_type == "paper":
-        print("resource")
         setup_paper_view(resource_id, resource)
     elif resource_type == "experiment":
         setup_experiment_view(resource_id, resource)
