@@ -4,7 +4,7 @@ import networkx as nx
 from pandas import read_csv
 from pyalex import Works
 
-from hackathon.utils.config import PUBLICATIONS_PATH
+from utils.config import PUBLICATIONS_PATH
 
 
 BATCH_SIZE = 50

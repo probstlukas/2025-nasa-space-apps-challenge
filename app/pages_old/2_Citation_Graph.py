@@ -2,8 +2,13 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import networkx as nx
 
+from utils.ui import render_app_sidebar
 
-st.set_page_config(page_title="Citation Graph", page_icon="🕸️")
+
+st.set_page_config(page_title="Citation Graph", page_icon="🕸️", layout="wide")
+
+render_app_sidebar()
+
 
 seed_data = st.session_state.get("knowledge_graph_seed")
 
