@@ -7,27 +7,7 @@ import json
 
 st.set_page_config(page_title="Search", page_icon="🔍", layout="wide")
 
-
-
-N = 20
-
-G: nx.Graph
-G = nx.Graph()
-G.add_nodes_from(range(N))
-edges = set()
-edges_with_similarity = []
-while len(edges) < 40:
-    u = randrange(0, N)
-    v = randrange(0, N - 1)
-    if v >= u: v += 1
-    if u > v: u, v = v, u
-    if (u, v) in edges: continue
-    edges.add((u, v))
-    edges_with_similarity.append((u, v, random()))
-
-for u, v, sim in edges_with_similarity:
-    G.add_edge(u, v, similarity=sim)
-# G = nx.node_link_graph(json.load(open("./graphs/citation_graph_test.json", "r")))
+G: nx.Graph = nx.node_link_graph(json.load(open("./data/keyword_graph.json", "r")))
 
 
 def create_relevance_graph(c, lim):
@@ -81,11 +61,11 @@ def create_relevance_graph(c, lim):
         ax=ax
     )
     nx.draw_networkx_edges(R, pos, edge_color="#888888", ax=ax)
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    nx.draw_networkx_edges(G, pos, edge_color="#888888", alpha=0.4, ax=ax)
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    # xlim = ax.get_xlim()
+    # ylim = ax.get_ylim()
+    # nx.draw_networkx_edges(G, pos, edgelist=secondary_edges, edge_color="#888888", alpha=0.4, ax=ax)
+    # ax.set_xlim(xlim)
+    # ax.set_ylim(ylim)
 
     relevance[c] += 1e-9
     relevant.sort(key=lambda i: -relevance[i])
@@ -95,21 +75,12 @@ def create_relevance_graph(c, lim):
 
 
 
-search_query = st.text_input("Search here")
-
+c = 0
 description_column, connection_column = st.columns([0.5, 0.5])
-if search_query:
-    if not search_query.isdigit():
-        description_column.write(f"The search query \"{search_query}\" is not a number")
-    else:
-        c = int(search_query)
-        if c >= G.order():
-            description_column.write(f"The search query {c} is too large")
-        else:
-            relevant, fig = create_relevance_graph(c, 7)
-            for entry in relevant:
-                entry_id, entry_name = entry
-                entry_data = G.nodes[entry_name]["description"] if "description" in G.nodes[entry_name] else f"No description for \"{entry_name}\""
-                description_column.write(f"[{entry_id}] {entry_data}")
-                description_column.divider()
-            connection_column.pyplot(fig, transparent=True)
+relevant, fig = create_relevance_graph(c, 7)
+for entry in relevant:
+    entry_id, entry_name = entry
+    entry_data = f"Christopher do title here for {entry_id}"
+    description_column.write(f"[{entry_id}] {entry_data}")
+    description_column.divider()
+connection_column.pyplot(fig, transparent=True)

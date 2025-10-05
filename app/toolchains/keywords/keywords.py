@@ -35,7 +35,8 @@ embeddings, store = get_embeddings_for_texts(
 
 
 G = nx.Graph()
-G.add_nodes_from(all_descriptions.keys())
+for v, desc in all_descriptions.items():
+    G.add_node(v, { "description": desc })
 for u in all_descriptions.keys():
     u_edges = []
     for v in all_descriptions.keys():
