@@ -239,9 +239,12 @@ def _load_experiments():
 
 
 def _load_resources() -> DataFrame:
+    global RESOURCES
+
     if RESOURCE_PATH.exists():
         with open(RESOURCE_PATH, "rb") as file:
             RESOURCES = pickle.load(file)
+            print("Loaded resources from file")
 
     if len(RESOURCES) > 0:
         return
