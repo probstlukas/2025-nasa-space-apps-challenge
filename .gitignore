@@ -2,3 +2,6 @@
 *.pyc
 *.json
 *.npz
+
+# Contains secrets.toml for secret keys
+.streamlit

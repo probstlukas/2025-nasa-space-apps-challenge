@@ -1,7 +1,9 @@
 # 🔭 2025 NASA Space Apps Challenge
 
-![Logo](/app/images/logo_dark.png#gh-light-mode-only)
-![Logo](/app/images/logo_light.png#gh-dark-mode-only)
+<p align="left">
+  <img src="/app/images/logo_dark.png#gh-light-mode-only" alt="BioScholar logo" width="200" />
+  <img src="/app/images/logo_light.png#gh-dark-mode-only" alt="BioScholar logo" width="200" />
+</p>
 
 ## Usage
 ```bash
