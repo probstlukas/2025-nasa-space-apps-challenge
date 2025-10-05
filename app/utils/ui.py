@@ -1,8 +1,6 @@
 from pathlib import Path
 import streamlit as st
-
-
-LOGO_PATH = Path(__file__).resolve().parent.parent / "images" / "logo.png"
+from utils.config import LOGO_PATH
 
 
 def render_app_sidebar() -> None:
