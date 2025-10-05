@@ -4,3 +4,4 @@ pandas==2.3.3
 pyalex==0.18
 networkx==3.4.2
 watchdog==6.0.0
+sentence-transformers

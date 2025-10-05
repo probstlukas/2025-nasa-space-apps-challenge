@@ -11,7 +11,9 @@ def _model_slug(model_name: str) -> str:
 
 
 def _store_path(model_name: str) -> Path:
-    return PUBLICATIONS_PATH.resolve().parent / f"embeddings_{_model_slug(model_name)}.npz"
+    return (
+        PUBLICATIONS_PATH.resolve().parent / f"embeddings_{_model_slug(model_name)}.npz"
+    )
 
 
 def load_embedding_store(model_name: str) -> Dict[str, np.ndarray]:
@@ -51,7 +53,9 @@ def get_embeddings_for_texts(
     ids_list = list(ids)
     texts_list = list(texts)
 
-    missing_indices = [idx for idx, identifier in enumerate(ids_list) if identifier not in store]
+    missing_indices = [
+        idx for idx, identifier in enumerate(ids_list) if identifier not in store
+    ]
     if missing_indices:
         to_encode = [texts_list[idx] for idx in missing_indices]
         new_embeddings = encode_fn(to_encode)

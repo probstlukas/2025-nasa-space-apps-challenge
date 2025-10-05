@@ -6,7 +6,7 @@ from pandas import DataFrame, read_csv
 # from pyalex import config as pyalex_config, invert_abstract
 from pyalex.api import invert_abstract
 
-from utils.config import PUBLICATIONS_PATH, EXPERIMENTS_PATH
+from utils.config import PUBLICATIONS_PATH, EXPERIMENTS_PATH, RESOURCE_PATH
 from utils.openalex_utils import (
     fetch_work_by_title,
     fetch_referenced_works,
@@ -239,6 +239,10 @@ def _load_experiments():
 
 
 def _load_resources() -> DataFrame:
+    if RESOURCE_PATH.exists():
+        with open(RESOURCE_PATH, "rb") as file:
+            RESOURCES = pickle.load(file)
+
     if len(RESOURCES) > 0:
         return
 
@@ -246,6 +250,10 @@ def _load_resources() -> DataFrame:
     _load_publications()
 
     _load_experiments()
+
+    if not RESOURCE_PATH.exists():
+        with open(RESOURCE_PATH, "wb") as file:
+            pickle.dump(RESOURCES, file)
 
 
 # Load resources statically once on server startup
