@@ -1,10 +1,12 @@
 import datetime
 import os
+import tempfile
 import pickle
 import random
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, ContextManager
 
 import numpy as np
+from contextlib import nullcontext
 from pandas import read_csv
 
 try:  # Streamlit is optional in non-app contexts
@@ -283,6 +285,17 @@ def _prepare_text_for_embedding(text: Optional[str]) -> Optional[str]:
     return trimmed
 
 
+def _streamlit_active() -> bool:
+    if st is None:
+        return False
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        return get_script_run_ctx() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _embedding_text(resource: ResourceType) -> Optional[str]:
     if isinstance(resource, PaperResource):
         title = resource.title
@@ -306,6 +319,7 @@ def _ensure_embeddings() -> bool:
     client = _get_openai_client()
     updated = False
 
+    targets: List[ResourceType] = []
     for resource in RESOURCES.values():
         if not hasattr(resource, "embedding"):
             resource.embedding = None  # type: ignore[attr-defined]
@@ -314,12 +328,39 @@ def _ensure_embeddings() -> bool:
             resource.embedding_model = None  # type: ignore[attr-defined]
             updated = True
 
-    if client is None:
-        if st is not None:
-            st.warning(
-                "OpenAI API key missing. Skipping embedding generation; search results will be basic."
-            )
+        if (
+            getattr(resource, "embedding_model", None) != EMBED_MODEL
+            or getattr(resource, "embedding", None) is None
+        ):
+            targets.append(resource)
+
+    if not targets:
         return updated
+
+    if client is None:
+        message = "OpenAI API key missing. Embedding refresh skipped; search quality may degrade."
+        if st is not None:
+            st.warning(message)
+        else:
+            print(message)
+        return updated
+
+    total = len(targets)
+    processed = 0
+
+    progress_bar = st.progress(0.0) if st is not None else None
+    status_placeholder = st.empty() if st is not None else None
+
+    def update_progress() -> None:
+        if total == 0:
+            return
+        fraction = min(processed / total, 1.0)
+        if progress_bar is not None:
+            progress_bar.progress(fraction)
+            text = f"Generating embeddings… {processed}/{total}"
+            status_placeholder.text(text)  # type: ignore[union-attr]
+        elif processed == total or processed % 25 == 0:
+            print(f"[Embeddings] processed {processed}/{total}")
 
     pending_texts: List[str] = []
     pending_items: List[ResourceType] = []
@@ -348,28 +389,100 @@ def _ensure_embeddings() -> bool:
         pending_texts = []
         pending_items = []
 
-    for resource in RESOURCES.values():
-        existing_model = getattr(resource, "embedding_model", None)
-        existing_embedding = getattr(resource, "embedding", None)
-        if existing_model == EMBED_MODEL and existing_embedding is not None:
-            continue
-
+    for resource in targets:
         text = _prepare_text_for_embedding(_embedding_text(resource))
         if not text:
             resource.embedding = None  # type: ignore[attr-defined]
             resource.embedding_model = EMBED_MODEL  # type: ignore[attr-defined]
             updated = True
+            processed += 1
+            update_progress()
             continue
 
         pending_texts.append(text)
         pending_items.append(resource)
         if len(pending_texts) >= EMBED_BATCH_SIZE:
             flush_batch()
+        processed += 1
+        update_progress()
 
     flush_batch()
+    processed = total
+    update_progress()
+
+    if status_placeholder is not None:
+        status_placeholder.text("Embeddings ready.")
 
     return updated
 
+
+def _apply_embeddings_snapshot(snapshot: Dict[str, Dict[str, Any]]) -> bool:
+    hydrated = False
+    for resource_id_str, payload in snapshot.items():
+        resource = RESOURCES.get(int(resource_id_str))
+        if resource is None:
+            continue
+        embedding = payload.get("embedding")
+        if embedding is None:
+            continue
+        resource.embedding = embedding  # type: ignore[attr-defined]
+        resource.embedding_model = EMBED_MODEL  # type: ignore[attr-defined]
+        hydrated = True
+    return hydrated
+
+
+def _serialize_repository() -> Dict[str, Any]:
+    metadata: Dict[str, Dict[str, Any]] = {"papers": {}, "experiments": {}}
+    embeddings: Dict[str, Dict[str, Any]] = {}
+
+    for resource_id, resource in RESOURCES.items():
+        key = str(resource_id)
+        if isinstance(resource, PaperResource):
+            metadata["papers"][key] = {"title": resource.title}
+        elif isinstance(resource, ExperimentResource):
+            metadata["experiments"][key] = {
+                "osd_key": resource.osd_key,
+                "metadata": resource._metadata,
+            }
+
+        embedding = getattr(resource, "embedding", None)
+        if embedding is not None:
+            embeddings[key] = {
+                "embedding": list(map(float, embedding)),
+                "title": getattr(resource, "title", "Untitled"),
+                "type": getattr(resource, "type", "Unknown"),
+                "year": getattr(resource, "year", None),
+            }
+
+    return {"metadata": metadata, "embeddings": embeddings}
+
+
+def _deserialize_resources(snapshot: Dict[str, Any]) -> None:
+    global RESOURCES, PAPER_TITLE_INDEX, _next_id
+
+    RESOURCES = {}
+    PAPER_TITLE_INDEX.clear()
+    _next_id = 0
+
+    metadata = snapshot.get("metadata", {})
+
+    for id_str, data in metadata.get("papers", {}).items():
+        resource_id = int(id_str)
+        resource = PaperResource(title=data.get("title", "Untitled"))
+        RESOURCES[resource_id] = resource
+        PAPER_TITLE_INDEX[resource.title] = resource_id
+        _next_id = max(_next_id, resource_id + 1)
+
+    for id_str, data in metadata.get("experiments", {}).items():
+        resource_id = int(id_str)
+        resource = ExperimentResource(data.get("osd_key"), data.get("metadata", {}))
+        RESOURCES[resource_id] = resource
+        for publication in resource.publications:
+            publication._experiments.append(resource)
+        _next_id = max(_next_id, resource_id + 1)
+
+    embeddings_snapshot = snapshot.get("embeddings", {})
+    _apply_embeddings_snapshot(embeddings_snapshot)
 
 def _search_fallback(
     query: str,
@@ -508,22 +621,51 @@ def sample_resources(
 def _load_resources() -> None:
     global RESOURCES
 
-    loaded_from_disk = False
+    snapshot: Optional[Dict[str, Any]] = None
     if RESOURCE_PATH.exists():
-        with open(RESOURCE_PATH, "rb") as file:
-            RESOURCES = pickle.load(file)
-            loaded_from_disk = True
+        try:
+            with open(RESOURCE_PATH, "rb") as file:
+                snapshot = pickle.load(file)
+        except (EOFError, pickle.UnpicklingError, AttributeError, ValueError):
+            snapshot = None
+    if isinstance(snapshot, dict):
+        _deserialize_resources(snapshot)
 
     if len(RESOURCES) == 0:
-        # Important to load publications before experiments
         _load_publications()
         _load_experiments()
+        snapshot = None
 
     updated = _ensure_embeddings()
 
-    if not RESOURCE_PATH.exists() or (loaded_from_disk and updated):
-        with open(RESOURCE_PATH, "wb") as file:
-            pickle.dump(RESOURCES, file)
+    if updated or snapshot is None:
+        RESOURCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        spinner: ContextManager[Any]
+        if st is not None:
+            spinner = st.spinner("Saving resource snapshot…")
+        else:
+            spinner = nullcontext()
+
+        repository_payload = _serialize_repository()
+
+        with spinner:
+            tmp_file = tempfile.NamedTemporaryFile(
+                "wb",
+                delete=False,
+                dir=RESOURCE_PATH.parent,
+                prefix="resources_",
+                suffix=".tmp",
+            )
+            try:
+                with tmp_file as handle:
+                    pickle.dump(repository_payload, handle)
+                os.replace(tmp_file.name, RESOURCE_PATH)
+            except Exception:
+                os.unlink(tmp_file.name)
+                raise
+        if st is None:
+            print(f"Resource snapshot saved to {RESOURCE_PATH}")
 
 
 # Load resources statically once on server startup
